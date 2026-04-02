@@ -1,0 +1,171 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: Arial, sans-serif;
+  background: radial-gradient(#F47521, #0F0F0F);
+  color: #222;
+}
+
+/* HEADER FIJO */
+.header {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  padding: 20px 40px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  z-index: 1000;
+}
+
+.header .logo {
+  max-width: 150px;
+}
+
+.header .navega {
+  display: flex;
+  gap: 30px;
+  list-style: none;
+}
+
+.header .navega li a {
+  text-decoration: none;
+  color: grey;
+  transition: 0.3s;
+}
+
+.header .navega li a:hover {
+  color: white;
+}
+
+/* CONTENEDOR PRINCIPAL CON SIDEBAR */
+.content-container {
+  display: flex;
+  margin-top: 100px; /* espacio para header */
+  padding: 0 20px;
+  gap: 20px;
+}
+
+/* MAIN - GRID DE ANIMES */
+.main {
+  flex: 1;
+}
+
+.anime-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 20px;
+}
+
+.anime-card {
+  background-color: #fff;
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+  cursor: pointer;
+}
+
+.anime-card:hover {
+  transform: translateY(-10px);
+  box-shadow: 0 12px 20px rgba(0,0,0,0.2);
+}
+
+.anime-img img {
+  width: 100%;
+  display: block;
+  border-bottom: 1px solid #eee;
+}
+
+.anime-info {
+  padding: 10px;
+  text-align: center;
+}
+
+.anime-info h3 {
+  font-size: 1rem;
+  margin: 10px 0;
+}
+
+.btn {
+  display: inline-block;
+  background-color: #00aaff;
+  color: white;
+  padding: 8px 12px;
+  border-radius: 4px;
+  text-decoration: none;
+  transition: background-color 0.3s ease;
+}
+
+.btn:hover {
+  background-color: #0077cc;
+}
+
+/* SIDEBAR DERECHA */
+/* SIDEBAR DERECHA */
+.sidebar {
+  width: 200px;                     /* ancho del sidebar */
+  background-color: #111;           /* color de fondo */
+  padding: 20px;                    /* espacio interno */
+  border-radius: 10px;              /* bordes redondeados */
+  height: calc(100vh - 100px);      /* altura completa menos el header */
+  position: sticky;                  /* se queda pegado al hacer scroll */
+  top: 100px;                        /* espacio desde el top (altura del header) */
+  overflow-y: auto;                  /* permite scroll vertical */
+  scrollbar-width: thin;             /* Firefox: barra más delgada */
+  scrollbar-color: #f47521 #222;    /* Firefox: colores del thumb y track */
+  transition: all 0.3s ease;        /* transición suave si quieres animar cambios */
+}
+
+/* Scrollbar para navegadores Webkit (Chrome, Edge, Safari) */
+.sidebar::-webkit-scrollbar {
+  width: 6px;                        /* ancho de la barra */
+}
+
+.sidebar::-webkit-scrollbar-track {
+  background: #222;                  /* color del track */
+  border-radius: 3px;                /* bordes redondeados */
+}
+
+.sidebar::-webkit-scrollbar-thumb {
+  background-color: #f47521;         /* color del pulgar */
+  border-radius: 3px;                /* bordes redondeados */
+}
+
+/* Título */
+.sidebar h3 {
+  color: #f47521;
+  margin-bottom: 15px;
+  text-align: center;
+  font-size: 1.2rem;
+}
+
+/* Lista de animes */
+.sidebar ul {
+  list-style: none;
+  padding-left: 0;
+}
+
+.sidebar ul li {
+  margin-bottom: 10px;
+}
+
+.sidebar ul li a {
+  color: #ccc;
+  text-decoration: none;
+  font-size: 0.9rem;
+  transition: color 0.2s ease;
+}
+
+.sidebar ul li a:hover {
+  color: white;
+}
+
+footer{
+  padding: 50px;
+}
