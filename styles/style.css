@@ -91,3 +91,15 @@ main {
     margin: 5px 0;
   }
 }
+
+.navbar-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+#Logo {
+  max-height: 32px;
+  width: auto;
+  display: block;
+}
