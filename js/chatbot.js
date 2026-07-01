@@ -243,42 +243,42 @@
      COMPONENTES UI
   ============================================================= */
 
-  function showMainMenu() {
-    optsEl.innerHTML =
-      '<div class="cb-opt-label">Selecciona una opción:</div>' +
+function showMainMenu() {
+  optsEl.innerHTML =
+    '<div class="cb-opt-label">Selecciona una opción:</div>' +
 
-      '<button class="cb-opt-btn" onclick="cbPickMenu(\'catalogo\')">' +
-        '<span class="cb-opt-icon">📄</span>' +
-        '<span class="cb-opt-meta">' +
-          '<span class="cb-opt-title">Ver catálogo / variedades</span>' +
-          '<span class="cb-opt-sub">Productos disponibles</span>' +
-        '</span>' +
-      '</button>' +
+    '<button class="cb-opt-btn" onclick="cbPickMenu(\'catalogo\')">' +
+      '<span class="cb-opt-icon">📄</span>' +
+      '<span class="cb-opt-meta">' +
+        '<span class="cb-opt-title">Ver catálogo / variedades</span>' +
+        '<span class="cb-opt-sub">Productos disponibles</span>' +
+      '</span>' +
+    '</button>' +
 
-      '<button class="cb-opt-btn" onclick="cbPickMenu(\'precios\')">' +
-        '<span class="cb-opt-icon">💲</span>' +
-        '<span class="cb-opt-meta">' +
-          '<span class="cb-opt-title">Consultar precios</span>' +
-          '<span class="cb-opt-sub">Te pedimos producto y cantidad</span>' +
-        '</span>' +
-      '</button>' +
+    '<button class="cb-opt-btn" onclick="cbPickMenu(\'precios\')">' +
+      '<span class="cb-opt-icon">💲</span>' +
+      '<span class="cb-opt-meta">' +
+        '<span class="cb-opt-title">Consultar precios</span>' +
+        '<span class="cb-opt-sub">Te pedimos producto y cantidad</span>' +
+      '</span>' +
+    '</button>' +
 
-      '<button class="cb-opt-btn" onclick="cbPickMenu(\'pedido\')">' +
-        '<span class="cb-opt-icon">🛒</span>' +
-        '<span class="cb-opt-meta">' +
-          '<span class="cb-opt-title">Hacer pedido</span>' +
-          '<span class="cb-opt-sub">Registramos datos básicos</span>' +
-        '</span>' +
-      '</button>' +
+    '<button class="cb-opt-btn" onclick="cbPickMenu(\'pedido\')">' +
+      '<span class="cb-opt-icon">🛒</span>' +
+      '<span class="cb-opt-meta">' +
+        '<span class="cb-opt-title">Hacer pedido</span>' +
+        '<span class="cb-opt-sub">Registramos datos básicos</span>' +
+      '</span>' +
+    '</button>' +
 
-      '<button class="cb-opt-btn" onclick="cbPickMenu(\'asesoria\')">' +
-        '<span class="cb-opt-icon">🧪</span>' +
-        '<span class="cb-opt-meta">' +
-          '<span class="cb-opt-title">Asesoría técnica</span>' +
-          '<span class="cb-opt-sub">Materiales, condiciones y objetivo</span>' +
-        '</span>' +
-      '</button>';
-  }
+    '<button class="cb-opt-btn" onclick="cbPickMenu(\'asesoria\')">' +
+      '<span class="cb-opt-icon">🧪</span>' +
+      '<span class="cb-opt-meta">' +
+        '<span class="cb-opt-title">Asesoría técnica</span>' +
+        '<span class="cb-opt-sub">Materiales, condiciones y objetivo</span>' +
+      '</span>' +
+    '</button>';
+}
 
   function showTextInput(label, placeholder) {
     optsEl.innerHTML =
