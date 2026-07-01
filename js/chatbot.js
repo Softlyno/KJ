@@ -277,20 +277,6 @@
           '<span class="cb-opt-title">Asesoría técnica</span>' +
           '<span class="cb-opt-sub">Materiales, condiciones y objetivo</span>' +
         '</span>' +
-      '</button>' +
-
-      '<button class="cb-opt-btn" onclick="cbPickMenu(\'servicio\')">' +
-        '<span class="cb-opt-icon">🎧</span>' +
-        '<span class="cb-opt-meta">' +
-          '<span class="cb-opt-title">Servicio al cliente</span>' +
-        '</span>' +
-      '</button>' +
-
-      '<button class="cb-opt-btn" onclick="cbPickMenu(\'gerente\')">' +
-        '<span class="cb-opt-icon">👔</span>' +
-        '<span class="cb-opt-meta">' +
-          '<span class="cb-opt-title">Hablar con gerencia</span>' +
-        '</span>' +
       '</button>';
   }
 
