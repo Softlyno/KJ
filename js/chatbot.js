@@ -30,7 +30,7 @@
 
     // Si tienes el PDF en tu web, pon aquí la ruta.
     // Ejemplo: '/catalogo-kayserbond.pdf'
-    catalogUrl: '/catalogo-kayserbond.pdf',
+    catalogUrl: 'catalogo-kayserbond.pdf',
 
     businessStartHour: 6,
     businessEndHour: 18,
