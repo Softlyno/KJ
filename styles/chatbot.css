@@ -51,8 +51,8 @@
   position: fixed;
   bottom: 96px;
   right: 24px;
-  width: 30%;
-  max-height: 85%;
+  width: min(420px, calc(100vw - 32px));
+  height: min(680px, calc(100vh - 120px));
   border-radius: 16px;
   overflow: hidden;
   box-shadow: 0 8px 36px rgba(0, 0, 0, .20);
@@ -61,7 +61,6 @@
   z-index: 9998;
   background: #ece5dd;
 
-  /* Estado inicial: oculto */
   transform: translateY(14px) scale(.97);
   opacity: 0;
   pointer-events: none;
@@ -75,12 +74,18 @@
 }
 
 /* Adaptación a pantallas pequeñas */
-@media (max-width: 420px) {
+@media (max-width: 600px) {
   #cb-popup {
     right: 8px;
     left: 8px;
     width: auto;
+    height: calc(100vh - 110px);
     bottom: 90px;
+  }
+
+  #cb-toggle {
+    right: 18px;
+    bottom: 18px;
   }
 }
 
@@ -296,4 +301,48 @@
   font-size: 11px;
   color: #999;
   padding: 2px 0;
+}
+/* ── Input para respuestas escritas ─────────────────────────── */
+
+.cb-input-wrap {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+}
+
+.cb-text-input {
+  flex: 1;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid #d6d2cc;
+  border-radius: 10px;
+  outline: none;
+  font-size: 13.5px;
+  background: #fff;
+  color: #111;
+}
+
+.cb-text-input:focus {
+  border-color: #25D366;
+  box-shadow: 0 0 0 2px rgba(37, 211, 102, 0.15);
+}
+
+.cb-text-input::placeholder {
+  color: #999;
+}
+
+.cb-send-btn {
+  padding: 10px 13px;
+  border: none;
+  border-radius: 10px;
+  background: #25D366;
+  color: #fff;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.cb-send-btn:hover {
+  background: #1ebe5d;
 }
