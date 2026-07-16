@@ -3,16 +3,13 @@
  * @description Chatbot web de KayserBond conectado al NAS.
  *
  * Este archivo contiene únicamente JavaScript.
- * No agrega ni modifica HTML o CSS.
+ * Conserva el HTML y CSS existentes.
  *
- * Conserva estos elementos del HTML actual:
+ * Requiere estos IDs:
  * - cb-toggle
  * - cb-popup
  * - cb-messages
  * - cb-options
- *
- * Comparte productos, folios, tickets y turnos de asesores
- * con el chatbot de WhatsApp mediante la API del NAS.
  */
 
 (function () {
@@ -34,7 +31,7 @@
     timeZone: 'America/Mexico_City',
 
     sessionKey: 'kayserbot_web_session_id',
-    requestTimeoutMs: 25000
+    requestTimeoutMs: 30000
   };
 
   var BRANCHES_FALLBACK = [
@@ -80,7 +77,7 @@
   };
 
   /* ============================================================
-     ELEMENTOS EXISTENTES DEL HTML
+     ELEMENTOS DEL HTML
   ============================================================ */
 
   var toggleBtn = document.getElementById('cb-toggle');
@@ -124,7 +121,9 @@
   function normalizeMexicoPhone(value) {
     var digits = onlyDigits(value);
 
-    if (!digits) return '';
+    if (!digits) {
+      return '';
+    }
 
     if (digits.length === 10) {
       return '521' + digits;
@@ -152,7 +151,9 @@
   function parseQuantity(value) {
     var match = String(value || '').match(/\d+/);
 
-    if (!match) return 0;
+    if (!match) {
+      return 0;
+    }
 
     return parseInt(match[0], 10) || 0;
   }
@@ -210,9 +211,12 @@
     try {
       var saved = localStorage.getItem(CONFIG.sessionKey);
 
-      if (saved) return saved;
+      if (saved) {
+        return saved;
+      }
 
       var created = createUniqueId('WEB');
+
       localStorage.setItem(CONFIG.sessionKey, created);
 
       return created;
@@ -251,7 +255,7 @@
     if (
       serverConfig &&
       Array.isArray(serverConfig.branches) &&
-      serverConfig.branches.length
+      serverConfig.branches.length > 0
     ) {
       return serverConfig.branches;
     }
@@ -264,7 +268,7 @@
   }
 
   /* ============================================================
-     CONEXIÓN CON EL NAS
+     PETICIONES AL NAS
   ============================================================ */
 
   function apiRequest(path, options) {
@@ -277,7 +281,8 @@
 
     requestOptions.headers = Object.assign(
       {
-        Accept: 'application/json'
+        Accept: 'application/json',
+        'ngrok-skip-browser-warning': '1'
       },
       requestOptions.headers || {}
     );
@@ -287,6 +292,7 @@
     }
 
     requestOptions.signal = controller.signal;
+    requestOptions.cache = 'no-store';
 
     return fetch(apiUrl(path), requestOptions)
       .then(function (response) {
@@ -308,6 +314,7 @@
               'HTTP_' + response.status;
 
             var requestError = new Error(errorCode);
+
             requestError.code = errorCode;
             requestError.status = response.status;
 
@@ -404,14 +411,6 @@
   function normalizeProduct(product) {
     var source = product || {};
 
-    var variants = Array.isArray(source.variants)
-      ? source.variants
-      : [];
-
-    var notes = Array.isArray(source.notes)
-      ? source.notes
-      : [];
-
     return {
       id:
         source.id ||
@@ -456,8 +455,15 @@
         source.departamento ||
         'PINTURAS_ADHESIVOS',
 
-      variants: variants,
-      notes: notes
+      variants:
+        Array.isArray(source.variants)
+          ? source.variants
+          : [],
+
+      notes:
+        Array.isArray(source.notes)
+          ? source.notes
+          : []
     };
   }
 
@@ -483,41 +489,51 @@
       'Clave: <strong>' +
       escapeHtml(p.id) +
       '</strong><br>' +
+
       'Producto: ' +
       escapeHtml(p.product) +
       '<br>' +
+
       'Categoría: ' +
       escapeHtml(p.category);
 
-    if (p.variants.length) {
+    if (p.variants.length > 0) {
       html +=
         '<br><br><strong>Precios de venta al público:</strong>';
 
       for (var i = 0; i < p.variants.length; i++) {
         html +=
           '<br>• ' +
-          escapeHtml(p.variants[i].presentation || 'Presentación') +
+          escapeHtml(
+            p.variants[i].presentation ||
+            'Presentación'
+          ) +
           ': <strong>' +
-          escapeHtml(formatMoney(p.variants[i].price)) +
+          escapeHtml(
+            formatMoney(
+              p.variants[i].price
+            )
+          ) +
           '</strong>';
       }
     } else {
-      var priceText =
-        p.formattedPrice ||
-        p.price ||
-        'Precio no disponible.';
-
       html +=
         '<br><br><strong>' +
-        escapeHtml(priceText) +
+        escapeHtml(
+          p.formattedPrice ||
+          p.price ||
+          'Precio no disponible'
+        ) +
         '</strong>';
     }
 
-    if (p.notes.length) {
+    if (p.notes.length > 0) {
       html += '<br><br><strong>Notas:</strong>';
 
       for (var n = 0; n < p.notes.length; n++) {
-        html += '<br>• ' + escapeHtml(p.notes[n]);
+        html +=
+          '<br>• ' +
+          escapeHtml(p.notes[n]);
       }
     }
 
@@ -543,18 +559,18 @@
   }
 
   /* ============================================================
-     MENSAJES DEL CHAT
+     RENDERIZADO DEL CHAT
   ============================================================ */
 
   function renderMessage(message) {
     if (message.type === 'typing') {
       return (
         '<div class="cb-msg in">' +
-        '<div class="cb-typing">' +
-        '<div class="cb-dot"></div>' +
-        '<div class="cb-dot"></div>' +
-        '<div class="cb-dot"></div>' +
-        '</div>' +
+          '<div class="cb-typing">' +
+            '<div class="cb-dot"></div>' +
+            '<div class="cb-dot"></div>' +
+            '<div class="cb-dot"></div>' +
+          '</div>' +
         '</div>'
       );
     }
@@ -635,7 +651,7 @@
   }
 
   /* ============================================================
-     ELEMENTOS DEL MENÚ
+     MENÚS Y CONTROLES
   ============================================================ */
 
   function showMainMenu() {
@@ -643,69 +659,71 @@
       '<div class="cb-opt-label">Selecciona una opción:</div>' +
 
       '<button class="cb-opt-btn" onclick="cbPickMenu(\'catalogo\')">' +
-      '<span class="cb-opt-icon">1️⃣</span>' +
-      '<span class="cb-opt-meta">' +
-      '<span class="cb-opt-title">Ver catálogo de productos</span>' +
-      '<span class="cb-opt-sub">Abrir catálogo PDF</span>' +
-      '</span>' +
+        '<span class="cb-opt-icon">1️⃣</span>' +
+        '<span class="cb-opt-meta">' +
+          '<span class="cb-opt-title">Ver catálogo de productos</span>' +
+          '<span class="cb-opt-sub">Abrir catálogo PDF</span>' +
+        '</span>' +
       '</button>' +
 
       '<button class="cb-opt-btn" onclick="cbPickMenu(\'precios\')">' +
-      '<span class="cb-opt-icon">2️⃣</span>' +
-      '<span class="cb-opt-meta">' +
-      '<span class="cb-opt-title">Consultar precio con clave</span>' +
-      '<span class="cb-opt-sub">Buscar por clave o nombre</span>' +
-      '</span>' +
+        '<span class="cb-opt-icon">2️⃣</span>' +
+        '<span class="cb-opt-meta">' +
+          '<span class="cb-opt-title">Consultar precio con clave</span>' +
+          '<span class="cb-opt-sub">Buscar por clave o nombre</span>' +
+        '</span>' +
       '</button>' +
 
       '<button class="cb-opt-btn" onclick="cbPickMenu(\'pedido\')">' +
-      '<span class="cb-opt-icon">3️⃣</span>' +
-      '<span class="cb-opt-meta">' +
-      '<span class="cb-opt-title">Hacer pedido</span>' +
-      '<span class="cb-opt-sub">Entrega o recolección</span>' +
-      '</span>' +
+        '<span class="cb-opt-icon">3️⃣</span>' +
+        '<span class="cb-opt-meta">' +
+          '<span class="cb-opt-title">Hacer pedido</span>' +
+          '<span class="cb-opt-sub">Entrega o recolección</span>' +
+        '</span>' +
       '</button>' +
 
       '<button class="cb-opt-btn" onclick="cbPickMenu(\'asesoria\')">' +
-      '<span class="cb-opt-icon">4️⃣</span>' +
-      '<span class="cb-opt-meta">' +
-      '<span class="cb-opt-title">Asesoría técnica</span>' +
-      '<span class="cb-opt-sub">Materiales, condiciones y objetivo</span>' +
-      '</span>' +
+        '<span class="cb-opt-icon">4️⃣</span>' +
+        '<span class="cb-opt-meta">' +
+          '<span class="cb-opt-title">Asesoría técnica</span>' +
+          '<span class="cb-opt-sub">Materiales, condiciones y objetivo</span>' +
+        '</span>' +
       '</button>';
   }
 
   function showTextInput(label, placeholder) {
     optsEl.innerHTML =
       '<div class="cb-opt-label">' +
-      escapeHtml(label) +
+        escapeHtml(label) +
       '</div>' +
 
       '<div class="cb-input-wrap">' +
 
-      '<input ' +
-      'id="cb-text-input" ' +
-      'class="cb-text-input" ' +
-      'type="text" ' +
-      'autocomplete="off" ' +
-      'placeholder="' +
-      escapeHtml(placeholder || '') +
-      '" ' +
-      'onkeydown="if(event.key===\'Enter\'){cbSubmitText();}">' +
+        '<input ' +
+          'id="cb-text-input" ' +
+          'class="cb-text-input" ' +
+          'type="text" ' +
+          'autocomplete="off" ' +
+          'placeholder="' +
+          escapeHtml(placeholder || '') +
+          '" ' +
+          'onkeydown="if(event.key===\'Enter\'){cbSubmitText();}">' +
 
-      '<button class="cb-send-btn" onclick="cbSubmitText()">' +
-      'Enviar' +
-      '</button>' +
+        '<button class="cb-send-btn" onclick="cbSubmitText()">' +
+          'Enviar' +
+        '</button>' +
 
       '</div>' +
 
       '<button class="cb-back-btn" onclick="cbGoBack()">' +
-      '← Volver al menú' +
+        '← Volver al menú' +
       '</button>';
 
     setTimeout(function () {
       var input =
-        document.getElementById('cb-text-input');
+        document.getElementById(
+          'cb-text-input'
+        );
 
       if (input) {
         input.focus();
@@ -716,38 +734,35 @@
   function showCatalogOptions() {
     optsEl.innerHTML =
       '<a ' +
-      'class="cb-wa-btn" ' +
-      'href="' +
-      escapeHtml(getCatalogUrl()) +
-      '" ' +
-      'target="_blank" ' +
-      'rel="noopener noreferrer">' +
-      '📄 Abrir catálogo PDF' +
+        'class="cb-wa-btn" ' +
+        'href="#" ' +
+        'onclick="cbOpenCatalog(); return false;">' +
+        '📄 Abrir catálogo PDF' +
       '</a>' +
 
       '<button class="cb-opt-btn" onclick="cbPickMenu(\'precios\')">' +
-      '<span class="cb-opt-icon">2️⃣</span>' +
-      '<span class="cb-opt-meta">' +
-      '<span class="cb-opt-title">Consultar precio con clave</span>' +
-      '</span>' +
+        '<span class="cb-opt-icon">2️⃣</span>' +
+        '<span class="cb-opt-meta">' +
+          '<span class="cb-opt-title">Consultar precio con clave</span>' +
+        '</span>' +
       '</button>' +
 
       '<button class="cb-opt-btn" onclick="cbPickMenu(\'pedido\')">' +
-      '<span class="cb-opt-icon">3️⃣</span>' +
-      '<span class="cb-opt-meta">' +
-      '<span class="cb-opt-title">Hacer pedido</span>' +
-      '</span>' +
+        '<span class="cb-opt-icon">3️⃣</span>' +
+        '<span class="cb-opt-meta">' +
+          '<span class="cb-opt-title">Hacer pedido</span>' +
+        '</span>' +
       '</button>' +
 
       '<button class="cb-opt-btn" onclick="cbPickMenu(\'asesoria\')">' +
-      '<span class="cb-opt-icon">4️⃣</span>' +
-      '<span class="cb-opt-meta">' +
-      '<span class="cb-opt-title">Asesoría técnica</span>' +
-      '</span>' +
+        '<span class="cb-opt-icon">4️⃣</span>' +
+        '<span class="cb-opt-meta">' +
+          '<span class="cb-opt-title">Asesoría técnica</span>' +
+        '</span>' +
       '</button>' +
 
       '<button class="cb-back-btn" onclick="cbGoBack()">' +
-      '← Volver al menú' +
+        '← Volver al menú' +
       '</button>';
   }
 
@@ -756,22 +771,22 @@
       '<div class="cb-opt-label">¿Cómo deseas consultar el precio?</div>' +
 
       '<button class="cb-opt-btn" onclick="cbChoosePriceMode(\'search\')">' +
-      '<span class="cb-opt-icon">1️⃣</span>' +
-      '<span class="cb-opt-meta">' +
-      '<span class="cb-opt-title">Buscar por clave o nombre</span>' +
-      '<span class="cb-opt-sub">Ejemplo: KPU-101 o CK-314</span>' +
-      '</span>' +
+        '<span class="cb-opt-icon">1️⃣</span>' +
+        '<span class="cb-opt-meta">' +
+          '<span class="cb-opt-title">Buscar por clave o nombre</span>' +
+          '<span class="cb-opt-sub">Ejemplo: KPU-101 o CK-314</span>' +
+        '</span>' +
       '</button>' +
 
       '<button class="cb-opt-btn" onclick="cbChoosePriceMode(\'paints\')">' +
-      '<span class="cb-opt-icon">2️⃣</span>' +
-      '<span class="cb-opt-meta">' +
-      '<span class="cb-opt-title">Ver todas las pinturas e impermeabilizantes</span>' +
-      '</span>' +
+        '<span class="cb-opt-icon">2️⃣</span>' +
+        '<span class="cb-opt-meta">' +
+          '<span class="cb-opt-title">Ver todas las pinturas e impermeabilizantes</span>' +
+        '</span>' +
       '</button>' +
 
       '<button class="cb-back-btn" onclick="cbGoBack()">' +
-      '← Volver al menú' +
+        '← Volver al menú' +
       '</button>';
   }
 
@@ -780,21 +795,21 @@
       '<div class="cb-opt-label">Selecciona el departamento correcto:</div>' +
 
       '<button class="cb-opt-btn" onclick="cbPickDepartment(\'PINTURAS_ADHESIVOS\')">' +
-      '<span class="cb-opt-icon">1️⃣</span>' +
-      '<span class="cb-opt-meta">' +
-      '<span class="cb-opt-title">Pinturas, recubrimientos y adhesivos</span>' +
-      '</span>' +
+        '<span class="cb-opt-icon">1️⃣</span>' +
+        '<span class="cb-opt-meta">' +
+          '<span class="cb-opt-title">Pinturas, recubrimientos y adhesivos</span>' +
+        '</span>' +
       '</button>' +
 
       '<button class="cb-opt-btn" onclick="cbPickDepartment(\'ACABADOS\')">' +
-      '<span class="cb-opt-icon">2️⃣</span>' +
-      '<span class="cb-opt-meta">' +
-      '<span class="cb-opt-title">Acabados, cremas, lavadores e igualaciones</span>' +
-      '</span>' +
+        '<span class="cb-opt-icon">2️⃣</span>' +
+        '<span class="cb-opt-meta">' +
+          '<span class="cb-opt-title">Acabados, cremas, lavadores e igualaciones</span>' +
+        '</span>' +
       '</button>' +
 
       '<button class="cb-back-btn" onclick="cbGoBack()">' +
-      '← Volver al menú' +
+        '← Volver al menú' +
       '</button>';
   }
 
@@ -803,36 +818,41 @@
 
     var html =
       '<div class="cb-opt-label">' +
-      escapeHtml(prefix || 'Selecciona una sucursal:') +
+        escapeHtml(
+          prefix ||
+          'Selecciona una sucursal:'
+        ) +
       '</div>';
 
     for (var i = 0; i < branches.length; i++) {
       html +=
         '<button class="cb-opt-btn" onclick="cbPickBranch(\'' +
-        escapeHtml(branches[i].id) +
+          escapeHtml(branches[i].id) +
         '\')">' +
 
-        '<span class="cb-opt-icon">' +
-        escapeHtml(i + 1) +
-        '️⃣</span>' +
+          '<span class="cb-opt-icon">' +
+            escapeHtml(i + 1) +
+            '️⃣' +
+          '</span>' +
 
-        '<span class="cb-opt-meta">' +
+          '<span class="cb-opt-meta">' +
 
-        '<span class="cb-opt-title">' +
-        escapeHtml(branches[i].name) +
-        '</span>' +
+            '<span class="cb-opt-title">' +
+              escapeHtml(branches[i].name) +
+            '</span>' +
 
-        '<span class="cb-opt-sub">' +
-        escapeHtml(branches[i].address) +
-        '</span>' +
+            '<span class="cb-opt-sub">' +
+              escapeHtml(branches[i].address) +
+            '</span>' +
 
-        '</span>' +
+          '</span>' +
+
         '</button>';
     }
 
     html +=
       '<button class="cb-back-btn" onclick="cbCancelFlow()">' +
-      'Cancelar' +
+        'Cancelar' +
       '</button>';
 
     optsEl.innerHTML = html;
@@ -841,36 +861,37 @@
   function showPaintOptions(products) {
     var html =
       '<div class="cb-opt-label">' +
-      'Responde seleccionando la pintura que deseas consultar:' +
+        'Selecciona la pintura que deseas consultar:' +
       '</div>';
 
     for (var i = 0; i < products.length; i++) {
       html +=
         '<button class="cb-opt-btn" onclick="cbPickPaint(' +
-        i +
+          i +
         ')">' +
 
-        '<span class="cb-opt-icon">' +
-        escapeHtml(i + 1) +
-        '</span>' +
+          '<span class="cb-opt-icon">' +
+            escapeHtml(i + 1) +
+          '</span>' +
 
-        '<span class="cb-opt-meta">' +
+          '<span class="cb-opt-meta">' +
 
-        '<span class="cb-opt-title">' +
-        escapeHtml(products[i].product) +
-        '</span>' +
+            '<span class="cb-opt-title">' +
+              escapeHtml(products[i].product) +
+            '</span>' +
 
-        '<span class="cb-opt-sub">' +
-        escapeHtml(products[i].id) +
-        '</span>' +
+            '<span class="cb-opt-sub">' +
+              escapeHtml(products[i].id) +
+            '</span>' +
 
-        '</span>' +
+          '</span>' +
+
         '</button>';
     }
 
     html +=
       '<button class="cb-back-btn" onclick="cbGoBack()">' +
-      '← Volver al menú' +
+        '← Volver al menú' +
       '</button>';
 
     optsEl.innerHTML = html;
@@ -887,7 +908,7 @@
     ) {
       optsEl.innerHTML =
         '<button class="cb-back-btn" onclick="cbGoBack()">' +
-        '← Volver al menú principal' +
+          '← Volver al menú principal' +
         '</button>';
 
       return;
@@ -909,41 +930,41 @@
     optsEl.innerHTML =
       '<div class="cb-agent-card">' +
 
-      '<div class="cb-agent-name">' +
-      escapeHtml(
-        assignedContact.name ||
-        'Contacto asignado'
-      ) +
-      '</div>' +
+        '<div class="cb-agent-name">' +
+          escapeHtml(
+            assignedContact.name ||
+            'Contacto asignado'
+          ) +
+        '</div>' +
 
-      '<div class="cb-agent-role">' +
-      'Atención KayserBond' +
-      '</div>' +
+        '<div class="cb-agent-role">' +
+          'Atención KayserBond' +
+        '</div>' +
 
-      '<div class="cb-badge">' +
-      '📋 Atención por WhatsApp' +
-      '</div>' +
+        '<div class="cb-badge">' +
+          '📋 Atención por WhatsApp' +
+        '</div>' +
 
       '</div>' +
 
       '<a ' +
-      'class="cb-wa-btn" ' +
-      'href="' +
-      escapeHtml(whatsappLink) +
-      '" ' +
-      'target="_blank" ' +
-      'rel="noopener noreferrer">' +
+        'class="cb-wa-btn" ' +
+        'href="' +
+        escapeHtml(whatsappLink) +
+        '" ' +
+        'target="_blank" ' +
+        'rel="noopener noreferrer">' +
 
-      'Abrir WhatsApp con ' +
-      escapeHtml(
-        assignedContact.name ||
-        'el contacto asignado'
-      ) +
+        'Abrir WhatsApp con ' +
+        escapeHtml(
+          assignedContact.name ||
+          'el contacto asignado'
+        ) +
 
       '</a>' +
 
       '<button class="cb-back-btn" onclick="cbGoBack()">' +
-      '← Volver al menú principal' +
+        '← Volver al menú principal' +
       '</button>';
   }
 
@@ -965,6 +986,99 @@
   }
 
   /* ============================================================
+     ABRIR CATÁLOGO SIN ADVERTENCIA DE NGROK
+  ============================================================ */
+
+  window.cbOpenCatalog = function () {
+    var catalogWindow =
+      window.open('', '_blank');
+
+    if (catalogWindow) {
+      catalogWindow.document.open();
+
+      catalogWindow.document.write(
+        '<!doctype html>' +
+        '<html lang="es">' +
+        '<head>' +
+          '<meta charset="utf-8">' +
+          '<title>Cargando catálogo</title>' +
+        '</head>' +
+        '<body style="font-family:Arial;padding:25px;">' +
+          '<p>Cargando catálogo de KayserBond...</p>' +
+        '</body>' +
+        '</html>'
+      );
+
+      catalogWindow.document.close();
+    }
+
+    fetch(getCatalogUrl(), {
+      method: 'GET',
+      cache: 'no-store',
+      headers: {
+        Accept: 'application/pdf',
+        'ngrok-skip-browser-warning': '1'
+      }
+    })
+      .then(function (response) {
+        if (!response.ok) {
+          throw new Error(
+            'CATALOG_HTTP_' +
+            response.status
+          );
+        }
+
+        return response.blob();
+      })
+      .then(function (pdfBlob) {
+        var pdfUrl =
+          URL.createObjectURL(pdfBlob);
+
+        if (catalogWindow) {
+          catalogWindow.location.href =
+            pdfUrl;
+        } else {
+          var link =
+            document.createElement('a');
+
+          link.href = pdfUrl;
+          link.target = '_blank';
+          link.rel =
+            'noopener noreferrer';
+
+          document.body.appendChild(link);
+
+          link.click();
+          link.remove();
+        }
+
+        setTimeout(function () {
+          URL.revokeObjectURL(pdfUrl);
+        }, 300000);
+      })
+      .catch(function (error) {
+        if (catalogWindow) {
+          catalogWindow.close();
+        }
+
+        console.error(
+          'Error abriendo catálogo:',
+          error
+        );
+
+        botReply(
+          'No pude abrir el catálogo PDF.<br><br>' +
+          'Detalle: ' +
+          escapeHtml(
+            error.message ||
+            String(error)
+          ),
+          showCatalogOptions
+        );
+      });
+  };
+
+  /* ============================================================
      ERRORES
   ============================================================ */
 
@@ -974,39 +1088,75 @@
         ? String(error.message)
         : String(error || '');
 
-    if (code.indexOf('PRODUCT_NOT_FOUND') !== -1) {
+    if (
+      code.indexOf(
+        'PRODUCT_NOT_FOUND'
+      ) !== -1
+    ) {
       return 'No encontré ese producto en la lista de precios 2026.';
     }
 
-    if (code.indexOf('INVALID_ORDER_DATA') !== -1) {
+    if (
+      code.indexOf(
+        'INVALID_ORDER_DATA'
+      ) !== -1
+    ) {
       return 'Faltan datos obligatorios del pedido.';
     }
 
-    if (code.indexOf('ADDRESS_REQUIRED') !== -1) {
+    if (
+      code.indexOf(
+        'ADDRESS_REQUIRED'
+      ) !== -1
+    ) {
       return 'Debes escribir la dirección de entrega.';
     }
 
-    if (code.indexOf('BRANCH_REQUIRED') !== -1) {
+    if (
+      code.indexOf(
+        'BRANCH_REQUIRED'
+      ) !== -1
+    ) {
       return 'Debes seleccionar una sucursal.';
     }
 
-    if (code.indexOf('INVALID_TECHNICAL_DATA') !== -1) {
+    if (
+      code.indexOf(
+        'INVALID_TECHNICAL_DATA'
+      ) !== -1
+    ) {
       return 'Faltan datos obligatorios de la asesoría técnica.';
     }
 
-    if (code.indexOf('TOO_MANY_REQUESTS') !== -1) {
-      return 'Se realizaron demasiadas solicitudes. Espera un momento e inténtalo nuevamente.';
+    if (
+      code.indexOf(
+        'TOO_MANY_REQUESTS'
+      ) !== -1
+    ) {
+      return 'Se realizaron demasiadas solicitudes. Espera un momento.';
     }
 
-    if (code.indexOf('REQUEST_TIMEOUT') !== -1) {
+    if (
+      code.indexOf(
+        'REQUEST_TIMEOUT'
+      ) !== -1
+    ) {
       return 'El NAS tardó demasiado en responder.';
+    }
+
+    if (
+      code.indexOf(
+        'Failed to fetch'
+      ) !== -1
+    ) {
+      return 'No se pudo establecer conexión con el NAS.';
     }
 
     return code;
   }
 
   /* ============================================================
-     CONSULTA DE PINTURAS Y PRODUCTOS
+     PINTURAS Y PRODUCTOS
   ============================================================ */
 
   function loadAndShowPaints(purpose) {
@@ -1019,7 +1169,9 @@
         removeTyping(typingId);
 
         if (!products.length) {
-          throw new Error('PAINT_LIST_EMPTY');
+          throw new Error(
+            'PAINT_LIST_EMPTY'
+          );
         }
 
         flow.step =
@@ -1039,7 +1191,9 @@
 
         botReply(
           'No pude cargar la lista de pinturas desde el NAS.<br><br>' +
-          escapeHtml(friendlyError(error)),
+          escapeHtml(
+            friendlyError(error)
+          ),
           function () {
             if (purpose === 'order') {
               flow.step =
@@ -1064,9 +1218,12 @@
   }
 
   function selectPriceProduct(product) {
-    var normalized = normalizeProduct(product);
+    var normalized =
+      normalizeProduct(product);
 
-    flow.data.product = normalized;
+    flow.data.product =
+      normalized;
+
     flow.step = 'menu';
 
     botReply(
@@ -1079,21 +1236,21 @@
   }
 
   function selectOrderProduct(product) {
-    var normalized = normalizeProduct(product);
+    var normalized =
+      normalizeProduct(product);
 
-    flow.data.product = normalized;
-    flow.data.productId = normalized.id;
+    flow.data.product =
+      normalized;
 
-    /*
-     * Se usa el nombre como consulta cuando está disponible.
-     * Esto distingue productos del Excel que comparten la misma clave,
-     * como algunos impermeabilizantes.
-     */
+    flow.data.productId =
+      normalized.id;
+
     flow.data.productQuery =
       normalized.product ||
       normalized.id;
 
-    flow.step = 'order_quantity';
+    flow.step =
+      'order_quantity';
 
     botReply(
       'Producto seleccionado ✅<br><br>' +
@@ -1115,9 +1272,10 @@
     lookupProduct(query)
       .then(function (product) {
         removeTyping(typingId);
+
         selectPriceProduct(product);
       })
-      .catch(function (error) {
+      .catch(function () {
         removeTyping(typingId);
 
         botReply(
@@ -1150,9 +1308,10 @@
     lookupProduct(query)
       .then(function (product) {
         removeTyping(typingId);
+
         selectOrderProduct(product);
       })
-      .catch(function (error) {
+      .catch(function () {
         removeTyping(typingId);
 
         botReply(
@@ -1176,39 +1335,53 @@
   ============================================================ */
 
   function createOrderTicket() {
-    if (isSubmitting) return;
+    if (isSubmitting) {
+      return;
+    }
 
     setSubmitting(true);
     clearOptions();
 
-    flow.data.pendingTicketType = 'order';
+    flow.data.pendingTicketType =
+      'order';
 
     var typingId = showTyping();
 
     var payload = {
       sessionId: getSessionId(),
-      requestId: ensureRequestId('ORDER'),
-      name: flow.data.name,
-      phone: flow.data.phone,
-      city: flow.data.city,
+      requestId:
+        ensureRequestId('ORDER'),
 
-      /*
-       * El backend acepta una clave o un nombre en productId.
-       * Enviar el nombre ayuda a distinguir claves repetidas.
-       */
+      name:
+        flow.data.name,
+
+      phone:
+        flow.data.phone,
+
+      city:
+        flow.data.city,
+
       productId:
         flow.data.productQuery ||
         flow.data.productId,
 
-      quantity: flow.data.quantity,
-      address: flow.data.address || '',
-      branchId: flow.data.branchId || ''
+      quantity:
+        flow.data.quantity,
+
+      address:
+        flow.data.address || '',
+
+      branchId:
+        flow.data.branchId || ''
     };
 
-    apiRequest('/api/web/ticket/order', {
-      method: 'POST',
-      body: JSON.stringify(payload)
-    })
+    apiRequest(
+      '/api/web/ticket/order',
+      {
+        method: 'POST',
+        body: JSON.stringify(payload)
+      }
+    )
       .then(function (response) {
         removeTyping(typingId);
         setSubmitting(false);
@@ -1237,28 +1410,32 @@
         addMessage(
           'No pude registrar el pedido en el NAS.<br><br>' +
           'Detalle: ' +
-          escapeHtml(friendlyError(error)) +
+          escapeHtml(
+            friendlyError(error)
+          ) +
           '<br><br>' +
-          'Tus datos siguen guardados para que lo intentes nuevamente.',
+          'Tus datos siguen guardados.',
           'in'
         );
 
         optsEl.innerHTML =
           '<button class="cb-opt-btn" onclick="cbRetryTicket()">' +
-          '<span class="cb-opt-icon">🔄</span>' +
-          '<span class="cb-opt-meta">' +
-          '<span class="cb-opt-title">Intentar nuevamente</span>' +
-          '</span>' +
+            '<span class="cb-opt-icon">🔄</span>' +
+            '<span class="cb-opt-meta">' +
+              '<span class="cb-opt-title">Intentar nuevamente</span>' +
+            '</span>' +
           '</button>' +
 
           '<button class="cb-back-btn" onclick="cbGoBack()">' +
-          '← Volver al menú' +
+            '← Volver al menú' +
           '</button>';
       });
   }
 
   function createTechnicalTicket() {
-    if (isSubmitting) return;
+    if (isSubmitting) {
+      return;
+    }
 
     setSubmitting(true);
     clearOptions();
@@ -1270,20 +1447,35 @@
 
     var payload = {
       sessionId: getSessionId(),
-      requestId: ensureRequestId('TECH'),
+      requestId:
+        ensureRequestId('TECH'),
+
       departmentKey:
         flow.data.departmentKey,
-      name: flow.data.name,
-      phone: flow.data.phone,
-      material: flow.data.material,
-      conditions: flow.data.conditions,
-      goal: flow.data.goal
+
+      name:
+        flow.data.name,
+
+      phone:
+        flow.data.phone,
+
+      material:
+        flow.data.material,
+
+      conditions:
+        flow.data.conditions,
+
+      goal:
+        flow.data.goal
     };
 
-    apiRequest('/api/web/ticket/technical', {
-      method: 'POST',
-      body: JSON.stringify(payload)
-    })
+    apiRequest(
+      '/api/web/ticket/technical',
+      {
+        method: 'POST',
+        body: JSON.stringify(payload)
+      }
+    )
       .then(function (response) {
         removeTyping(typingId);
         setSubmitting(false);
@@ -1312,28 +1504,30 @@
         addMessage(
           'No pude registrar la asesoría técnica en el NAS.<br><br>' +
           'Detalle: ' +
-          escapeHtml(friendlyError(error)) +
+          escapeHtml(
+            friendlyError(error)
+          ) +
           '<br><br>' +
-          'Tus datos siguen guardados para que lo intentes nuevamente.',
+          'Tus datos siguen guardados.',
           'in'
         );
 
         optsEl.innerHTML =
           '<button class="cb-opt-btn" onclick="cbRetryTicket()">' +
-          '<span class="cb-opt-icon">🔄</span>' +
-          '<span class="cb-opt-meta">' +
-          '<span class="cb-opt-title">Intentar nuevamente</span>' +
-          '</span>' +
+            '<span class="cb-opt-icon">🔄</span>' +
+            '<span class="cb-opt-meta">' +
+              '<span class="cb-opt-title">Intentar nuevamente</span>' +
+            '</span>' +
           '</button>' +
 
           '<button class="cb-back-btn" onclick="cbGoBack()">' +
-          '← Volver al menú' +
+            '← Volver al menú' +
           '</button>';
       });
   }
 
   /* ============================================================
-     BOTONES DEL MENÚ PRINCIPAL
+     BOTONES DEL MENÚ
   ============================================================ */
 
   window.cbPickMenu = function (option) {
@@ -1361,20 +1555,16 @@
 
     clearOptions();
 
-    if (
-      !isBusinessHours()
-    ) {
+    if (!isBusinessHours()) {
       addMessage(
         'Aviso: nuestro horario de atención es de ' +
         businessHoursText() +
-        '. Aun así puedes registrar tus datos y un asesor dará seguimiento.',
+        '. Aun así puedes registrar tus datos.',
         'in'
       );
     }
 
-    if (
-      option === 'catalogo'
-    ) {
+    if (option === 'catalogo') {
       resetFlow();
 
       botReply(
@@ -1387,11 +1577,11 @@
       return;
     }
 
-    if (
-      option === 'precios'
-    ) {
+    if (option === 'precios') {
       resetFlow();
-      flow.step = 'price_search_mode';
+
+      flow.step =
+        'price_search_mode';
 
       botReply(
         '¿Cómo deseas consultar el precio?',
@@ -1401,11 +1591,11 @@
       return;
     }
 
-    if (
-      option === 'pedido'
-    ) {
+    if (option === 'pedido') {
       resetFlow();
-      flow.step = 'order_name';
+
+      flow.step =
+        'order_name';
 
       botReply(
         '¡Perfecto! Vamos a registrar tu pedido.',
@@ -1420,11 +1610,11 @@
       return;
     }
 
-    if (
-      option === 'asesoria'
-    ) {
+    if (option === 'asesoria') {
       resetFlow();
-      flow.step = 'tech_department';
+
+      flow.step =
+        'tech_department';
 
       botReply(
         'Selecciona el departamento correcto:',
@@ -1444,7 +1634,7 @@
         'price_product_query';
 
       botReply(
-        'Escribe la clave o el nombre del producto que deseas consultar.<br><br>' +
+        'Escribe la clave o el nombre del producto.<br><br>' +
         'Ejemplos:<br>' +
         'KPU-101<br>' +
         'KIM-001<br>' +
@@ -1501,6 +1691,7 @@
       'order_paint_choice'
     ) {
       selectOrderProduct(selected);
+
       return;
     }
 
@@ -1563,6 +1754,7 @@
         String(branchId)
       ) {
         selected = branches[i];
+
         break;
       }
     }
@@ -1627,7 +1819,9 @@
         ''
       ).trim();
 
-    if (!value) return;
+    if (!value) {
+      return;
+    }
 
     addMessage(
       escapeHtml(value),
@@ -1635,6 +1829,7 @@
     );
 
     clearOptions();
+
     handleTextAnswer(value);
   };
 
@@ -1658,9 +1853,7 @@
       return;
     }
 
-    if (
-      clean === 'cancelar'
-    ) {
+    if (clean === 'cancelar') {
       resetFlow();
 
       botReply(
@@ -1671,9 +1864,7 @@
       return;
     }
 
-    if (
-      clean === 'test'
-    ) {
+    if (clean === 'test') {
       var testTypingId =
         showTyping();
 
@@ -1738,8 +1929,11 @@
         break;
 
       case 'order_name':
-        flow.data.name = value;
-        flow.step = 'order_phone';
+        flow.data.name =
+          value;
+
+        flow.step =
+          'order_phone';
 
         botReply(
           'Gracias, ' +
@@ -1790,7 +1984,8 @@
         break;
 
       case 'order_city':
-        flow.data.city = value;
+        flow.data.city =
+          value;
 
         flow.step =
           'order_product_query';
@@ -1802,7 +1997,7 @@
           'KIM-001<br>' +
           'ACRILEST MATE<br>' +
           'CK-314<br><br>' +
-          'También puedes escribir pinturas para ver la lista completa.',
+          'También puedes escribir pinturas.',
           function () {
             showTextInput(
               'Clave o nombre del producto',
@@ -1831,9 +2026,7 @@
         var quantity =
           parseQuantity(value);
 
-        if (
-          quantity <= 0
-        ) {
+        if (quantity <= 0) {
           botReply(
             'Escribe la cantidad usando un número. Ejemplo: 5',
             function () {
@@ -2020,6 +2213,7 @@
       'technical'
     ) {
       createTechnicalTicket();
+
       return;
     }
 
@@ -2111,8 +2305,7 @@
     'keydown',
     function (event) {
       if (
-        event.key ===
-          'Escape' &&
+        event.key === 'Escape' &&
         isOpen
       ) {
         closeChat();
@@ -2145,15 +2338,13 @@
       'in'
     );
 
-    if (
-      !isBusinessHours()
-    ) {
+    if (!isBusinessHours()) {
       addMessage(
         'En este momento nuestros asesores no están disponibles.<br>' +
         'Nuestro horario de atención es de ' +
         businessHoursText() +
         '.<br><br>' +
-        'Aun así puedes registrar tu información y un asesor dará seguimiento.',
+        'Aun así puedes registrar tu información.',
         'in'
       );
     }
