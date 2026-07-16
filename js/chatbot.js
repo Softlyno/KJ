@@ -1,51 +1,43 @@
 /**
- * @file chatbot.js
- * @description Lógica del chatbot web de KayserBond.
+ * @file index.js
+ * @description Chatbot web de KayserBond conectado al NAS.
  *
- * IMPORTANTE:
- * - Este archivo contiene únicamente JavaScript.
- * - No agrega HTML ni CSS.
- * - Conserva los IDs y clases que ya usa tu HTML/CSS actual.
- * - Los folios, los turnos de asesores y las notificaciones por WhatsApp
- *   se crean en el NAS mediante la API del bot Baileys.
+ * Este archivo contiene únicamente JavaScript.
+ * No agrega ni modifica HTML o CSS.
  *
- * Requiere estos IDs en el HTML existente:
+ * Conserva estos elementos del HTML actual:
  * - cb-toggle
  * - cb-popup
  * - cb-messages
  * - cb-options
+ *
+ * Comparte productos, folios, tickets y turnos de asesores
+ * con el chatbot de WhatsApp mediante la API del NAS.
  */
 
 (function () {
   'use strict';
 
-  /* =============================================================
+  /* ============================================================
      CONFIGURACIÓN
-  ============================================================= */
+  ============================================================ */
 
   var CONFIG = {
     companyName: 'KayserBond',
 
-    // API del bot Baileys en el NAS para pruebas dentro de la red local.
-    // Cuando la página sea pública, cambia esta dirección por el dominio HTTPS
-    // configurado en el proxy inverso del NAS.
-    apiBaseUrl: 'http://192.168.10.218:3001',
-
-    // Déjalo vacío si tu API no utiliza llave.
-    apiKey: '',
-
-    // Ruta del PDF dentro de tu página web.
-    catalogUrl: 'catalogo-kayserbond.pdf',
+    apiBaseUrl:
+      window.KAYSERBOT_API_BASE ||
+      'https://progress-scariness-ripple.ngrok-free.dev',
 
     businessStartHour: 6,
     businessEndHour: 18,
     timeZone: 'America/Mexico_City',
 
-    sessionKey: 'cb_web_session_id',
-    apiTimeoutMs: 20000
+    sessionKey: 'kayserbot_web_session_id',
+    requestTimeoutMs: 25000
   };
 
-  var BRANCHES = [
+  var BRANCHES_FALLBACK = [
     {
       id: '1',
       name: 'Sucursal El Coecillo',
@@ -54,37 +46,42 @@
     {
       id: '2',
       name: 'Sucursal La Piscina',
-      address: 'San Hilario #101 esq San Jacobo. Col. La Piscina, León, Guanajuato'
+      address:
+        'San Hilario #101 esq. San Jacobo. Col. La Piscina, León, Guanajuato'
     }
   ];
 
   var DEPARTMENTS = {
     PINTURAS_ADHESIVOS: {
       key: 'PINTURAS_ADHESIVOS',
-      label: 'Pinturas y recubrimientos / Adhesivos'
+      label: 'Pinturas, recubrimientos y adhesivos'
     },
     ACABADOS: {
       key: 'ACABADOS',
-      label: 'Acabados, cremas, lavadores, igualaciones, etc.'
+      label: 'Acabados, cremas, lavadores e igualaciones'
     }
   };
 
-  /* =============================================================
+  /* ============================================================
      ESTADO
-  ============================================================= */
+  ============================================================ */
 
   var messages = [];
   var isOpen = false;
   var isSubmitting = false;
+  var serverConfig = null;
+  var paintProducts = [];
+  var memorySessionId = '';
 
   var flow = {
     step: 'menu',
-    data: {}
+    data: {},
+    requestId: ''
   };
 
-  /* =============================================================
-     DOM
-  ============================================================= */
+  /* ============================================================
+     ELEMENTOS EXISTENTES DEL HTML
+  ============================================================ */
 
   var toggleBtn = document.getElementById('cb-toggle');
   var popup = document.getElementById('cb-popup');
@@ -93,17 +90,17 @@
 
   if (!toggleBtn || !popup || !msgsEl || !optsEl) {
     console.error(
-      'KayserBot web: faltan uno o más elementos requeridos: cb-toggle, cb-popup, cb-messages, cb-options.'
+      'KayserBot web: faltan cb-toggle, cb-popup, cb-messages o cb-options.'
     );
     return;
   }
 
-  /* =============================================================
+  /* ============================================================
      UTILIDADES
-  ============================================================= */
+  ============================================================ */
 
-  function escapeHtml(text) {
-    return String(text || '')
+  function escapeHtml(value) {
+    return String(value === undefined || value === null ? '' : value)
       .replace(/&/g, '&amp;')
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;')
@@ -111,20 +108,17 @@
       .replace(/'/g, '&#039;');
   }
 
-  function normalizeText(text) {
-    return String(text || '')
+  function normalizeText(value) {
+    return String(value || '')
       .trim()
       .toLowerCase()
       .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '');
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/\s+/g, ' ');
   }
 
-  function normalizeId(value) {
-    return String(value || '').trim().toUpperCase();
-  }
-
-  function onlyDigits(text) {
-    return String(text || '').replace(/\D/g, '');
+  function onlyDigits(value) {
+    return String(value || '').replace(/\D/g, '');
   }
 
   function normalizeMexicoPhone(value) {
@@ -140,7 +134,11 @@
       return '52' + digits;
     }
 
-    if (digits.length === 12 && digits.indexOf('52') === 0 && digits.indexOf('521') !== 0) {
+    if (
+      digits.length === 12 &&
+      digits.indexOf('52') === 0 &&
+      digits.indexOf('521') !== 0
+    ) {
       return '521' + digits.slice(2);
     }
 
@@ -151,14 +149,16 @@
     return '';
   }
 
-  function isLeonCity(city) {
-    return normalizeText(city).indexOf('leon') !== -1;
-  }
-
   function parseQuantity(value) {
     var match = String(value || '').match(/\d+/);
+
     if (!match) return 0;
+
     return parseInt(match[0], 10) || 0;
+  }
+
+  function isLeonCity(city) {
+    return normalizeText(city).indexOf('leon') !== -1;
   }
 
   function getCurrentTime() {
@@ -168,20 +168,16 @@
     });
   }
 
-  function buildWhatsAppUrl(phone, text) {
-    var clean = normalizeMexicoPhone(phone) || onlyDigits(phone);
-    return 'https://wa.me/' + clean + '?text=' + encodeURIComponent(text || '');
-  }
-
   function getMexicoHour() {
     try {
-      var hour = new Intl.DateTimeFormat('en-US', {
-        timeZone: CONFIG.timeZone,
-        hour: '2-digit',
-        hour12: false
-      }).format(new Date());
-
-      return parseInt(hour, 10);
+      return parseInt(
+        new Intl.DateTimeFormat('en-US', {
+          timeZone: CONFIG.timeZone,
+          hour: '2-digit',
+          hour12: false
+        }).format(new Date()),
+        10
+      );
     } catch (error) {
       return new Date().getHours();
     }
@@ -189,32 +185,61 @@
 
   function isBusinessHours() {
     var hour = getMexicoHour();
-    return hour >= CONFIG.businessStartHour && hour < CONFIG.businessEndHour;
+
+    return (
+      hour >= CONFIG.businessStartHour &&
+      hour < CONFIG.businessEndHour
+    );
   }
 
   function businessHoursText() {
     return '6:00 AM a 6:00 PM';
   }
 
-  function createSessionId() {
-    var existing = localStorage.getItem(CONFIG.sessionKey);
-    if (existing) return existing;
-
-    var randomPart = Math.random().toString(36).slice(2, 12);
-    var sessionId = 'WEB-' + Date.now() + '-' + randomPart;
-    localStorage.setItem(CONFIG.sessionKey, sessionId);
-    return sessionId;
+  function createUniqueId(prefix) {
+    return (
+      prefix +
+      '-' +
+      Date.now() +
+      '-' +
+      Math.random().toString(36).slice(2, 12)
+    );
   }
 
   function getSessionId() {
-    return createSessionId();
+    try {
+      var saved = localStorage.getItem(CONFIG.sessionKey);
+
+      if (saved) return saved;
+
+      var created = createUniqueId('WEB');
+      localStorage.setItem(CONFIG.sessionKey, created);
+
+      return created;
+    } catch (error) {
+      if (!memorySessionId) {
+        memorySessionId = createUniqueId('WEB');
+      }
+
+      return memorySessionId;
+    }
+  }
+
+  function ensureRequestId(prefix) {
+    if (!flow.requestId) {
+      flow.requestId = createUniqueId(prefix);
+    }
+
+    return flow.requestId;
   }
 
   function resetFlow() {
     flow = {
       step: 'menu',
-      data: {}
+      data: {},
+      requestId: ''
     };
+
     isSubmitting = false;
   }
 
@@ -222,186 +247,346 @@
     optsEl.innerHTML = '';
   }
 
+  function getBranches() {
+    if (
+      serverConfig &&
+      Array.isArray(serverConfig.branches) &&
+      serverConfig.branches.length
+    ) {
+      return serverConfig.branches;
+    }
+
+    return BRANCHES_FALLBACK;
+  }
+
   function apiUrl(path) {
     return CONFIG.apiBaseUrl.replace(/\/$/, '') + path;
   }
 
+  /* ============================================================
+     CONEXIÓN CON EL NAS
+  ============================================================ */
+
   function apiRequest(path, options) {
     var requestOptions = options || {};
     var controller = new AbortController();
-    var timer = setTimeout(function () {
+
+    var timeout = setTimeout(function () {
       controller.abort();
-    }, CONFIG.apiTimeoutMs);
+    }, CONFIG.requestTimeoutMs);
 
-    var headers = requestOptions.headers || {};
-    headers.Accept = 'application/json';
+    requestOptions.headers = Object.assign(
+      {
+        Accept: 'application/json'
+      },
+      requestOptions.headers || {}
+    );
 
-    if (requestOptions.body && !headers['Content-Type']) {
-      headers['Content-Type'] = 'application/json';
+    if (requestOptions.body) {
+      requestOptions.headers['Content-Type'] = 'application/json';
     }
 
-    if (CONFIG.apiKey) {
-      headers['X-API-Key'] = CONFIG.apiKey;
-    }
-
-    requestOptions.headers = headers;
     requestOptions.signal = controller.signal;
 
     return fetch(apiUrl(path), requestOptions)
       .then(function (response) {
         return response.text().then(function (rawText) {
-          var data = {};
+          var payload = {};
 
           try {
-            data = rawText ? JSON.parse(rawText) : {};
+            payload = rawText ? JSON.parse(rawText) : {};
           } catch (error) {
-            data = { message: rawText };
+            payload = {
+              message: rawText
+            };
           }
 
           if (!response.ok) {
-            var message = data.error || data.message || ('Error HTTP ' + response.status);
-            throw new Error(message);
+            var errorCode =
+              payload.error ||
+              payload.message ||
+              'HTTP_' + response.status;
+
+            var requestError = new Error(errorCode);
+            requestError.code = errorCode;
+            requestError.status = response.status;
+
+            throw requestError;
           }
 
-          return data;
+          return payload;
         });
       })
+      .catch(function (error) {
+        if (error && error.name === 'AbortError') {
+          throw new Error('REQUEST_TIMEOUT');
+        }
+
+        throw error;
+      })
       .finally(function () {
-        clearTimeout(timer);
+        clearTimeout(timeout);
       });
   }
 
-  function findProductById(productId) {
-    var id = normalizeId(productId);
-    return apiRequest('/api/web/product/' + encodeURIComponent(id), {
+  function initializeServerConnection() {
+    return apiRequest('/api/web/config', {
+      method: 'GET'
+    })
+      .then(function (config) {
+        serverConfig = config;
+
+        if (config && config.companyName) {
+          CONFIG.companyName = config.companyName;
+        }
+
+        return config;
+      })
+      .catch(function (error) {
+        console.error(
+          'KayserBot web: no se pudo conectar inicialmente con el NAS:',
+          error
+        );
+
+        return null;
+      });
+  }
+
+  function lookupProduct(query) {
+    var cleanQuery = String(query || '').trim();
+
+    return apiRequest(
+      '/api/web/product/' + encodeURIComponent(cleanQuery),
+      {
+        method: 'GET'
+      }
+    ).then(function (response) {
+      if (!response || !response.product) {
+        throw new Error('PRODUCT_NOT_FOUND');
+      }
+
+      return normalizeProduct(response.product);
+    });
+  }
+
+  function loadPaintProducts() {
+    return apiRequest('/api/web/paints', {
       method: 'GET'
     }).then(function (response) {
-      if (!response || response.ok === false || !response.product) {
-        return null;
-      }
-      return response.product;
-    }).catch(function (error) {
-      if (
-        /no encontrado|not found|404/i.test(String(error && error.message))
-      ) {
-        return null;
-      }
-      throw error;
+      var products =
+        response && Array.isArray(response.products)
+          ? response.products
+          : [];
+
+      paintProducts = products.map(normalizeProduct);
+
+      return paintProducts;
     });
   }
 
-  function createTicket(payload) {
-    return apiRequest('/api/web/tickets', {
-      method: 'POST',
-      body: JSON.stringify({
-        source: 'web',
-        sessionId: getSessionId(),
-        type: payload.type,
-        departmentKey: payload.departmentKey,
-        customer: payload.customer,
-        details: payload.details
-      })
-    });
-  }
+  function getCatalogUrl() {
+    var catalogPath =
+      serverConfig && serverConfig.catalogUrl
+        ? serverConfig.catalogUrl
+        : '/catalogo-kayserbond.pdf';
 
-  function getAssignedContact(response) {
-    if (!response) return null;
-    return response.assignedContact || response.assignedPerson || response.contact || null;
-  }
-
-  function getTicketId(response) {
-    if (!response) return '';
-    return response.ticketId || response.folio || response.id || '';
-  }
-
-  function formatPrice(value) {
-    if (value === null || value === undefined || value === '') {
-      return 'Precio no disponible';
+    if (/^https?:\/\//i.test(catalogPath)) {
+      return catalogPath;
     }
 
-    if (typeof value === 'number') {
-      return new Intl.NumberFormat('es-MX', {
-        style: 'currency',
-        currency: 'MXN'
-      }).format(value);
-    }
-
-    var raw = String(value).trim();
-    var number = Number(raw.replace(/[$,\s]/g, ''));
-
-    if (!isNaN(number) && /\d/.test(raw)) {
-      return new Intl.NumberFormat('es-MX', {
-        style: 'currency',
-        currency: 'MXN'
-      }).format(number);
-    }
-
-    return raw;
+    return apiUrl(catalogPath);
   }
+
+  /* ============================================================
+     PRODUCTOS
+  ============================================================ */
 
   function normalizeProduct(product) {
     var source = product || {};
 
+    var variants = Array.isArray(source.variants)
+      ? source.variants
+      : [];
+
+    var notes = Array.isArray(source.notes)
+      ? source.notes
+      : [];
+
     return {
-      id: source.id || source.ID || source.productId || '',
-      category: source.category || source.categoria || source.Categoria || 'Sin categoría',
-      product: source.product || source.producto || source.Producto || source.name || '',
+      id:
+        source.id ||
+        source.ID ||
+        source.productId ||
+        '',
+
+      category:
+        source.category ||
+        source.categoria ||
+        source.Categoria ||
+        'Sin categoría',
+
+      product:
+        source.product ||
+        source.producto ||
+        source.Producto ||
+        source.name ||
+        '',
+
       presentation:
-        source.presentation || source.presentacion || source.Presentacion || 'Sin presentación',
+        source.presentation ||
+        source.presentacion ||
+        source.Presentacion ||
+        'Sin presentación registrada',
+
       price:
         source.price !== undefined
           ? source.price
           : source.precio !== undefined
             ? source.precio
             : source.Precio,
+
+      formattedPrice:
+        source.formattedPrice ||
+        source.formatted_price ||
+        '',
+
       departmentKey:
-        source.departmentKey || source.department || source.departamento || 'PINTURAS_ADHESIVOS'
+        source.departmentKey ||
+        source.department ||
+        source.departamento ||
+        'PINTURAS_ADHESIVOS',
+
+      variants: variants,
+      notes: notes
     };
+  }
+
+  function formatMoney(value) {
+    var numeric = Number(value);
+
+    if (!isFinite(numeric) || numeric <= 0) {
+      return 'Precio no disponible';
+    }
+
+    return new Intl.NumberFormat('es-MX', {
+      style: 'currency',
+      currency: 'MXN',
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    }).format(numeric);
   }
 
   function productDetailsHtml(product) {
     var p = normalizeProduct(product);
 
+    var html =
+      'Clave: <strong>' +
+      escapeHtml(p.id) +
+      '</strong><br>' +
+      'Producto: ' +
+      escapeHtml(p.product) +
+      '<br>' +
+      'Categoría: ' +
+      escapeHtml(p.category);
+
+    if (p.variants.length) {
+      html +=
+        '<br><br><strong>Precios de venta al público:</strong>';
+
+      for (var i = 0; i < p.variants.length; i++) {
+        html +=
+          '<br>• ' +
+          escapeHtml(p.variants[i].presentation || 'Presentación') +
+          ': <strong>' +
+          escapeHtml(formatMoney(p.variants[i].price)) +
+          '</strong>';
+      }
+    } else {
+      var priceText =
+        p.formattedPrice ||
+        p.price ||
+        'Precio no disponible.';
+
+      html +=
+        '<br><br><strong>' +
+        escapeHtml(priceText) +
+        '</strong>';
+    }
+
+    if (p.notes.length) {
+      html += '<br><br><strong>Notas:</strong>';
+
+      for (var n = 0; n < p.notes.length; n++) {
+        html += '<br>• ' + escapeHtml(p.notes[n]);
+      }
+    }
+
+    return html;
+  }
+
+  function paintListHtml(products) {
+    var html =
+      '<strong>Pinturas e impermeabilizantes disponibles:</strong><br><br>';
+
+    for (var i = 0; i < products.length; i++) {
+      html +=
+        escapeHtml(i + 1) +
+        ' — ' +
+        escapeHtml(products[i].product);
+
+      if (i < products.length - 1) {
+        html += '<br>';
+      }
+    }
+
+    return html;
+  }
+
+  /* ============================================================
+     MENSAJES DEL CHAT
+  ============================================================ */
+
+  function renderMessage(message) {
+    if (message.type === 'typing') {
+      return (
+        '<div class="cb-msg in">' +
+        '<div class="cb-typing">' +
+        '<div class="cb-dot"></div>' +
+        '<div class="cb-dot"></div>' +
+        '<div class="cb-dot"></div>' +
+        '</div>' +
+        '</div>'
+      );
+    }
+
+    var side =
+      message.direction === 'out'
+        ? 'out'
+        : 'in';
+
     return (
-      'ID: <strong>' + escapeHtml(p.id) + '</strong><br>' +
-      'Categoría: ' + escapeHtml(p.category) + '<br>' +
-      'Producto: ' + escapeHtml(p.product) + '<br>' +
-      'Presentación: ' + escapeHtml(p.presentation) + '<br>' +
-      'Precio: <strong>' + escapeHtml(formatPrice(p.price)) + '</strong>'
+      '<div class="cb-msg ' +
+      side +
+      '">' +
+      message.html +
+      '<div class="cb-msg-time">' +
+      message.time +
+      '</div>' +
+      '</div>'
     );
   }
 
-  /* =============================================================
-     RENDER MENSAJES
-  ============================================================= */
-
-  function renderMessage(msg) {
-    if (msg.type === 'typing') {
-      return '<div class="cb-msg in">' +
-               '<div class="cb-typing">' +
-                 '<div class="cb-dot"></div>' +
-                 '<div class="cb-dot"></div>' +
-                 '<div class="cb-dot"></div>' +
-               '</div>' +
-             '</div>';
-    }
-
-    var side = msg.direction === 'out' ? 'out' : 'in';
-
-    return '<div class="cb-msg ' + side + '">' +
-             msg.html +
-             '<div class="cb-msg-time">' + msg.time + '</div>' +
-           '</div>';
-  }
-
   function renderAllMessages() {
-    msgsEl.innerHTML = messages.map(renderMessage).join('');
+    msgsEl.innerHTML = messages
+      .map(renderMessage)
+      .join('');
+
     msgsEl.scrollTop = msgsEl.scrollHeight;
   }
 
-  function addMessage(htmlContent, direction) {
+  function addMessage(html, direction) {
     messages.push({
-      html: htmlContent,
+      html: html,
       direction: direction,
       time: getCurrentTime()
     });
@@ -410,16 +595,25 @@
   }
 
   function showTyping() {
-    var id = Date.now() + Math.floor(Math.random() * 999);
-    messages.push({ type: 'typing', id: id });
+    var typingId =
+      Date.now() +
+      Math.floor(Math.random() * 999);
+
+    messages.push({
+      type: 'typing',
+      id: typingId
+    });
+
     renderAllMessages();
-    return id;
+
+    return typingId;
   }
 
-  function removeTyping(id) {
+  function removeTyping(typingId) {
     messages = messages.filter(function (message) {
-      return message.id !== id;
+      return message.id !== typingId;
     });
+
     renderAllMessages();
   }
 
@@ -432,746 +626,1539 @@
       removeTyping(typingId);
       addMessage(html, 'in');
 
-      if (typeof callback === 'function') callback();
+      if (typeof callback === 'function') {
+        callback();
+      }
 
       renderAllMessages();
-    }, 500);
+    }, 450);
   }
 
-  /* =============================================================
-     COMPONENTES UI
-  ============================================================= */
+  /* ============================================================
+     ELEMENTOS DEL MENÚ
+  ============================================================ */
 
   function showMainMenu() {
     optsEl.innerHTML =
       '<div class="cb-opt-label">Selecciona una opción:</div>' +
 
       '<button class="cb-opt-btn" onclick="cbPickMenu(\'catalogo\')">' +
-        '<span class="cb-opt-icon">📄</span>' +
-        '<span class="cb-opt-meta">' +
-          '<span class="cb-opt-title">Ver catálogo de productos</span>' +
-          '<span class="cb-opt-sub">Abrir catálogo PDF</span>' +
-        '</span>' +
+      '<span class="cb-opt-icon">1️⃣</span>' +
+      '<span class="cb-opt-meta">' +
+      '<span class="cb-opt-title">Ver catálogo de productos</span>' +
+      '<span class="cb-opt-sub">Abrir catálogo PDF</span>' +
+      '</span>' +
       '</button>' +
 
       '<button class="cb-opt-btn" onclick="cbPickMenu(\'precios\')">' +
-        '<span class="cb-opt-icon">💲</span>' +
-        '<span class="cb-opt-meta">' +
-          '<span class="cb-opt-title">Consultar precio por ID</span>' +
-          '<span class="cb-opt-sub">Consulta la base de productos</span>' +
-        '</span>' +
+      '<span class="cb-opt-icon">2️⃣</span>' +
+      '<span class="cb-opt-meta">' +
+      '<span class="cb-opt-title">Consultar precio con clave</span>' +
+      '<span class="cb-opt-sub">Buscar por clave o nombre</span>' +
+      '</span>' +
       '</button>' +
 
       '<button class="cb-opt-btn" onclick="cbPickMenu(\'pedido\')">' +
-        '<span class="cb-opt-icon">🛒</span>' +
-        '<span class="cb-opt-meta">' +
-          '<span class="cb-opt-title">Hacer pedido</span>' +
-          '<span class="cb-opt-sub">Entrega o recolección en sucursal</span>' +
-        '</span>' +
+      '<span class="cb-opt-icon">3️⃣</span>' +
+      '<span class="cb-opt-meta">' +
+      '<span class="cb-opt-title">Hacer pedido</span>' +
+      '<span class="cb-opt-sub">Entrega o recolección</span>' +
+      '</span>' +
       '</button>' +
 
       '<button class="cb-opt-btn" onclick="cbPickMenu(\'asesoria\')">' +
-        '<span class="cb-opt-icon">🧪</span>' +
-        '<span class="cb-opt-meta">' +
-          '<span class="cb-opt-title">Asesoría técnica</span>' +
-          '<span class="cb-opt-sub">Materiales, condiciones y objetivo</span>' +
-        '</span>' +
+      '<span class="cb-opt-icon">4️⃣</span>' +
+      '<span class="cb-opt-meta">' +
+      '<span class="cb-opt-title">Asesoría técnica</span>' +
+      '<span class="cb-opt-sub">Materiales, condiciones y objetivo</span>' +
+      '</span>' +
       '</button>';
   }
 
   function showTextInput(label, placeholder) {
     optsEl.innerHTML =
-      '<div class="cb-opt-label">' + escapeHtml(label) + '</div>' +
-      '<div class="cb-input-wrap">' +
-        '<input id="cb-text-input" class="cb-text-input" type="text" placeholder="' +
-          escapeHtml(placeholder || '') + '" ' +
-          'onkeydown="if(event.key===\'Enter\'){cbSubmitText();}">' +
-        '<button class="cb-send-btn" onclick="cbSubmitText()">Enviar</button>' +
+      '<div class="cb-opt-label">' +
+      escapeHtml(label) +
       '</div>' +
-      '<button class="cb-back-btn" onclick="cbGoBack()">← Volver al menú</button>';
+
+      '<div class="cb-input-wrap">' +
+
+      '<input ' +
+      'id="cb-text-input" ' +
+      'class="cb-text-input" ' +
+      'type="text" ' +
+      'autocomplete="off" ' +
+      'placeholder="' +
+      escapeHtml(placeholder || '') +
+      '" ' +
+      'onkeydown="if(event.key===\'Enter\'){cbSubmitText();}">' +
+
+      '<button class="cb-send-btn" onclick="cbSubmitText()">' +
+      'Enviar' +
+      '</button>' +
+
+      '</div>' +
+
+      '<button class="cb-back-btn" onclick="cbGoBack()">' +
+      '← Volver al menú' +
+      '</button>';
 
     setTimeout(function () {
-      var input = document.getElementById('cb-text-input');
-      if (input) input.focus();
+      var input =
+        document.getElementById('cb-text-input');
+
+      if (input) {
+        input.focus();
+      }
     }, 50);
   }
 
   function showCatalogOptions() {
     optsEl.innerHTML =
-      '<a class="cb-wa-btn" href="' + escapeHtml(CONFIG.catalogUrl) + '" target="_blank" rel="noopener noreferrer">' +
-        '📄 Abrir catálogo PDF' +
+      '<a ' +
+      'class="cb-wa-btn" ' +
+      'href="' +
+      escapeHtml(getCatalogUrl()) +
+      '" ' +
+      'target="_blank" ' +
+      'rel="noopener noreferrer">' +
+      '📄 Abrir catálogo PDF' +
       '</a>' +
 
       '<button class="cb-opt-btn" onclick="cbPickMenu(\'precios\')">' +
-        '<span class="cb-opt-icon">2️⃣</span>' +
-        '<span class="cb-opt-meta"><span class="cb-opt-title">Consultar precio por ID</span></span>' +
+      '<span class="cb-opt-icon">2️⃣</span>' +
+      '<span class="cb-opt-meta">' +
+      '<span class="cb-opt-title">Consultar precio con clave</span>' +
+      '</span>' +
       '</button>' +
 
       '<button class="cb-opt-btn" onclick="cbPickMenu(\'pedido\')">' +
-        '<span class="cb-opt-icon">3️⃣</span>' +
-        '<span class="cb-opt-meta"><span class="cb-opt-title">Hacer pedido</span></span>' +
+      '<span class="cb-opt-icon">3️⃣</span>' +
+      '<span class="cb-opt-meta">' +
+      '<span class="cb-opt-title">Hacer pedido</span>' +
+      '</span>' +
       '</button>' +
 
       '<button class="cb-opt-btn" onclick="cbPickMenu(\'asesoria\')">' +
-        '<span class="cb-opt-icon">4️⃣</span>' +
-        '<span class="cb-opt-meta"><span class="cb-opt-title">Asesoría técnica</span></span>' +
+      '<span class="cb-opt-icon">4️⃣</span>' +
+      '<span class="cb-opt-meta">' +
+      '<span class="cb-opt-title">Asesoría técnica</span>' +
+      '</span>' +
       '</button>' +
 
-      '<button class="cb-back-btn" onclick="cbGoBack()">← Volver al menú</button>';
+      '<button class="cb-back-btn" onclick="cbGoBack()">' +
+      '← Volver al menú' +
+      '</button>';
+  }
+
+  function showPriceSearchMode() {
+    optsEl.innerHTML =
+      '<div class="cb-opt-label">¿Cómo deseas consultar el precio?</div>' +
+
+      '<button class="cb-opt-btn" onclick="cbChoosePriceMode(\'search\')">' +
+      '<span class="cb-opt-icon">1️⃣</span>' +
+      '<span class="cb-opt-meta">' +
+      '<span class="cb-opt-title">Buscar por clave o nombre</span>' +
+      '<span class="cb-opt-sub">Ejemplo: KPU-101 o CK-314</span>' +
+      '</span>' +
+      '</button>' +
+
+      '<button class="cb-opt-btn" onclick="cbChoosePriceMode(\'paints\')">' +
+      '<span class="cb-opt-icon">2️⃣</span>' +
+      '<span class="cb-opt-meta">' +
+      '<span class="cb-opt-title">Ver todas las pinturas e impermeabilizantes</span>' +
+      '</span>' +
+      '</button>' +
+
+      '<button class="cb-back-btn" onclick="cbGoBack()">' +
+      '← Volver al menú' +
+      '</button>';
   }
 
   function showDepartmentOptions() {
     optsEl.innerHTML =
-      '<div class="cb-opt-label">Selecciona el departamento:</div>' +
+      '<div class="cb-opt-label">Selecciona el departamento correcto:</div>' +
 
       '<button class="cb-opt-btn" onclick="cbPickDepartment(\'PINTURAS_ADHESIVOS\')">' +
-        '<span class="cb-opt-icon">1️⃣</span>' +
-        '<span class="cb-opt-meta">' +
-          '<span class="cb-opt-title">Pinturas y recubrimientos / Adhesivos</span>' +
-        '</span>' +
+      '<span class="cb-opt-icon">1️⃣</span>' +
+      '<span class="cb-opt-meta">' +
+      '<span class="cb-opt-title">Pinturas, recubrimientos y adhesivos</span>' +
+      '</span>' +
       '</button>' +
 
       '<button class="cb-opt-btn" onclick="cbPickDepartment(\'ACABADOS\')">' +
-        '<span class="cb-opt-icon">2️⃣</span>' +
-        '<span class="cb-opt-meta">' +
-          '<span class="cb-opt-title">Acabados, cremas, lavadores e igualaciones</span>' +
-        '</span>' +
+      '<span class="cb-opt-icon">2️⃣</span>' +
+      '<span class="cb-opt-meta">' +
+      '<span class="cb-opt-title">Acabados, cremas, lavadores e igualaciones</span>' +
+      '</span>' +
       '</button>' +
 
-      '<button class="cb-back-btn" onclick="cbGoBack()">← Volver al menú</button>';
+      '<button class="cb-back-btn" onclick="cbGoBack()">' +
+      '← Volver al menú' +
+      '</button>';
   }
 
   function showBranchOptions(prefix) {
-    var html = '';
+    var branches = getBranches();
 
-    if (prefix) {
-      html += '<div class="cb-opt-label">' + escapeHtml(prefix) + '</div>';
-    }
+    var html =
+      '<div class="cb-opt-label">' +
+      escapeHtml(prefix || 'Selecciona una sucursal:') +
+      '</div>';
 
-    for (var i = 0; i < BRANCHES.length; i++) {
+    for (var i = 0; i < branches.length; i++) {
       html +=
-        '<button class="cb-opt-btn" onclick="cbPickBranch(\'' + BRANCHES[i].id + '\')">' +
-          '<span class="cb-opt-icon">' + (i + 1) + '️⃣</span>' +
-          '<span class="cb-opt-meta">' +
-            '<span class="cb-opt-title">' + escapeHtml(BRANCHES[i].name) + '</span>' +
-            '<span class="cb-opt-sub">' + escapeHtml(BRANCHES[i].address) + '</span>' +
-          '</span>' +
+        '<button class="cb-opt-btn" onclick="cbPickBranch(\'' +
+        escapeHtml(branches[i].id) +
+        '\')">' +
+
+        '<span class="cb-opt-icon">' +
+        escapeHtml(i + 1) +
+        '️⃣</span>' +
+
+        '<span class="cb-opt-meta">' +
+
+        '<span class="cb-opt-title">' +
+        escapeHtml(branches[i].name) +
+        '</span>' +
+
+        '<span class="cb-opt-sub">' +
+        escapeHtml(branches[i].address) +
+        '</span>' +
+
+        '</span>' +
         '</button>';
     }
 
-    html += '<button class="cb-back-btn" onclick="cbCancelFlow()">Cancelar</button>';
+    html +=
+      '<button class="cb-back-btn" onclick="cbCancelFlow()">' +
+      'Cancelar' +
+      '</button>';
+
     optsEl.innerHTML = html;
   }
 
-  function showWhatsAppPanel(agent, ticketId) {
-    if (!agent || !agent.phone) {
+  function showPaintOptions(products) {
+    var html =
+      '<div class="cb-opt-label">' +
+      'Responde seleccionando la pintura que deseas consultar:' +
+      '</div>';
+
+    for (var i = 0; i < products.length; i++) {
+      html +=
+        '<button class="cb-opt-btn" onclick="cbPickPaint(' +
+        i +
+        ')">' +
+
+        '<span class="cb-opt-icon">' +
+        escapeHtml(i + 1) +
+        '</span>' +
+
+        '<span class="cb-opt-meta">' +
+
+        '<span class="cb-opt-title">' +
+        escapeHtml(products[i].product) +
+        '</span>' +
+
+        '<span class="cb-opt-sub">' +
+        escapeHtml(products[i].id) +
+        '</span>' +
+
+        '</span>' +
+        '</button>';
+    }
+
+    html +=
+      '<button class="cb-back-btn" onclick="cbGoBack()">' +
+      '← Volver al menú' +
+      '</button>';
+
+    optsEl.innerHTML = html;
+  }
+
+  function showWhatsAppPanel(
+    assignedContact,
+    ticketId,
+    directLink
+  ) {
+    if (
+      !assignedContact ||
+      !assignedContact.phone
+    ) {
       optsEl.innerHTML =
-        '<button class="cb-back-btn" onclick="cbGoBack()">← Volver al menú principal</button>';
+        '<button class="cb-back-btn" onclick="cbGoBack()">' +
+        '← Volver al menú principal' +
+        '</button>';
+
       return;
     }
 
-    var waText = 'Hola, mi folio es ' + ticketId + '.';
+    var whatsappLink =
+      directLink ||
+      (
+        'https://wa.me/' +
+        onlyDigits(assignedContact.phone) +
+        '?text=' +
+        encodeURIComponent(
+          'Hola, mi folio es ' +
+          ticketId +
+          '.'
+        )
+      );
 
     optsEl.innerHTML =
       '<div class="cb-agent-card">' +
-        '<div class="cb-agent-name">' + escapeHtml(agent.name || 'Contacto asignado') + '</div>' +
-        '<div class="cb-agent-role">' + escapeHtml(agent.role || agent.label || 'Atención KayserBond') + '</div>' +
-        '<div class="cb-badge">📋 Atención por WhatsApp</div>' +
+
+      '<div class="cb-agent-name">' +
+      escapeHtml(
+        assignedContact.name ||
+        'Contacto asignado'
+      ) +
       '</div>' +
 
-      '<a class="cb-wa-btn" href="' + buildWhatsAppUrl(agent.phone, waText) + '" target="_blank" rel="noopener noreferrer">' +
-        'Abrir WhatsApp con ' + escapeHtml(agent.name || 'el contacto asignado') +
+      '<div class="cb-agent-role">' +
+      'Atención KayserBond' +
+      '</div>' +
+
+      '<div class="cb-badge">' +
+      '📋 Atención por WhatsApp' +
+      '</div>' +
+
+      '</div>' +
+
+      '<a ' +
+      'class="cb-wa-btn" ' +
+      'href="' +
+      escapeHtml(whatsappLink) +
+      '" ' +
+      'target="_blank" ' +
+      'rel="noopener noreferrer">' +
+
+      'Abrir WhatsApp con ' +
+      escapeHtml(
+        assignedContact.name ||
+        'el contacto asignado'
+      ) +
+
       '</a>' +
 
-      '<button class="cb-back-btn" onclick="cbGoBack()">← Volver al menú principal</button>';
+      '<button class="cb-back-btn" onclick="cbGoBack()">' +
+      '← Volver al menú principal' +
+      '</button>';
   }
 
-  function setControlsDisabled(disabled) {
-    var controls = optsEl.querySelectorAll('button, input, a');
-    for (var i = 0; i < controls.length; i++) {
-      if ('disabled' in controls[i]) {
-        controls[i].disabled = disabled;
-      }
+  function setSubmitting(value) {
+    isSubmitting = value;
+
+    var controls =
+      optsEl.querySelectorAll(
+        'button, input'
+      );
+
+    for (
+      var i = 0;
+      i < controls.length;
+      i++
+    ) {
+      controls[i].disabled = value;
     }
   }
 
-  /* =============================================================
-     FINALIZACIÓN Y TICKETS
-  ============================================================= */
+  /* ============================================================
+     ERRORES
+  ============================================================ */
 
-  function finishWithTicket(payload, successMessage) {
-    if (isSubmitting) return;
+  function friendlyError(error) {
+    var code =
+      error && error.message
+        ? String(error.message)
+        : String(error || '');
 
-    isSubmitting = true;
-    setControlsDisabled(true);
+    if (code.indexOf('PRODUCT_NOT_FOUND') !== -1) {
+      return 'No encontré ese producto en la lista de precios 2026.';
+    }
+
+    if (code.indexOf('INVALID_ORDER_DATA') !== -1) {
+      return 'Faltan datos obligatorios del pedido.';
+    }
+
+    if (code.indexOf('ADDRESS_REQUIRED') !== -1) {
+      return 'Debes escribir la dirección de entrega.';
+    }
+
+    if (code.indexOf('BRANCH_REQUIRED') !== -1) {
+      return 'Debes seleccionar una sucursal.';
+    }
+
+    if (code.indexOf('INVALID_TECHNICAL_DATA') !== -1) {
+      return 'Faltan datos obligatorios de la asesoría técnica.';
+    }
+
+    if (code.indexOf('TOO_MANY_REQUESTS') !== -1) {
+      return 'Se realizaron demasiadas solicitudes. Espera un momento e inténtalo nuevamente.';
+    }
+
+    if (code.indexOf('REQUEST_TIMEOUT') !== -1) {
+      return 'El NAS tardó demasiado en responder.';
+    }
+
+    return code;
+  }
+
+  /* ============================================================
+     CONSULTA DE PINTURAS Y PRODUCTOS
+  ============================================================ */
+
+  function loadAndShowPaints(purpose) {
     clearOptions();
 
     var typingId = showTyping();
 
-    createTicket(payload)
-      .then(function (response) {
+    loadPaintProducts()
+      .then(function (products) {
         removeTyping(typingId);
 
-        var ticketId = getTicketId(response);
-        var assignedContact = getAssignedContact(response);
-
-        if (!ticketId) {
-          throw new Error('El NAS no devolvió el folio del ticket.');
+        if (!products.length) {
+          throw new Error('PAINT_LIST_EMPTY');
         }
 
+        flow.step =
+          purpose === 'order'
+            ? 'order_paint_choice'
+            : 'price_paint_choice';
+
         addMessage(
-          escapeHtml(successMessage) + '<br><br>' +
-          'Tu folio es: <strong>' + escapeHtml(ticketId) + '</strong><br><br>' +
-          'El caso fue enviado al contacto correspondiente por WhatsApp.',
+          paintListHtml(products),
+          'in'
+        );
+
+        showPaintOptions(products);
+      })
+      .catch(function (error) {
+        removeTyping(typingId);
+
+        botReply(
+          'No pude cargar la lista de pinturas desde el NAS.<br><br>' +
+          escapeHtml(friendlyError(error)),
+          function () {
+            if (purpose === 'order') {
+              flow.step =
+                'order_product_query';
+
+              showTextInput(
+                'Escribe la clave o nombre del producto',
+                'Ejemplo: KPU-101'
+              );
+            } else {
+              flow.step =
+                'price_product_query';
+
+              showTextInput(
+                'Escribe la clave o nombre del producto',
+                'Ejemplo: KIM-001'
+              );
+            }
+          }
+        );
+      });
+  }
+
+  function selectPriceProduct(product) {
+    var normalized = normalizeProduct(product);
+
+    flow.data.product = normalized;
+    flow.step = 'menu';
+
+    botReply(
+      'Producto encontrado ✅<br><br>' +
+      productDetailsHtml(normalized) +
+      '<br><br>' +
+      'Si deseas hacer pedido, selecciona la opción 3.',
+      showMainMenu
+    );
+  }
+
+  function selectOrderProduct(product) {
+    var normalized = normalizeProduct(product);
+
+    flow.data.product = normalized;
+    flow.data.productId = normalized.id;
+
+    /*
+     * Se usa el nombre como consulta cuando está disponible.
+     * Esto distingue productos del Excel que comparten la misma clave,
+     * como algunos impermeabilizantes.
+     */
+    flow.data.productQuery =
+      normalized.product ||
+      normalized.id;
+
+    flow.step = 'order_quantity';
+
+    botReply(
+      'Producto seleccionado ✅<br><br>' +
+      productDetailsHtml(normalized),
+      function () {
+        showTextInput(
+          '¿Qué cantidad necesitas?',
+          'Ejemplo: 5'
+        );
+      }
+    );
+  }
+
+  function searchPriceProduct(query) {
+    clearOptions();
+
+    var typingId = showTyping();
+
+    lookupProduct(query)
+      .then(function (product) {
+        removeTyping(typingId);
+        selectPriceProduct(product);
+      })
+      .catch(function (error) {
+        removeTyping(typingId);
+
+        botReply(
+          'No encontré ese producto en la lista de precios 2026.<br><br>' +
+          'Puedes escribir la clave o una parte del nombre.<br><br>' +
+          'Ejemplos:<br>' +
+          '• KPU-101<br>' +
+          '• KIM-001<br>' +
+          '• ACRILEST MATE<br>' +
+          '• CK-314<br><br>' +
+          'También puedes escribir pinturas.',
+          function () {
+            flow.step =
+              'price_product_query';
+
+            showTextInput(
+              'Clave o nombre del producto',
+              'Ejemplo: KPU-101'
+            );
+          }
+        );
+      });
+  }
+
+  function searchOrderProduct(query) {
+    clearOptions();
+
+    var typingId = showTyping();
+
+    lookupProduct(query)
+      .then(function (product) {
+        removeTyping(typingId);
+        selectOrderProduct(product);
+      })
+      .catch(function (error) {
+        removeTyping(typingId);
+
+        botReply(
+          'No encontré ese producto en la lista de precios 2026.<br><br>' +
+          'Puedes escribir la clave, una parte del nombre o escribir pinturas.',
+          function () {
+            flow.step =
+              'order_product_query';
+
+            showTextInput(
+              'Clave o nombre del producto',
+              'Ejemplo: CK-314'
+            );
+          }
+        );
+      });
+  }
+
+  /* ============================================================
+     CREACIÓN DE TICKETS
+  ============================================================ */
+
+  function createOrderTicket() {
+    if (isSubmitting) return;
+
+    setSubmitting(true);
+    clearOptions();
+
+    flow.data.pendingTicketType = 'order';
+
+    var typingId = showTyping();
+
+    var payload = {
+      sessionId: getSessionId(),
+      requestId: ensureRequestId('ORDER'),
+      name: flow.data.name,
+      phone: flow.data.phone,
+      city: flow.data.city,
+
+      /*
+       * El backend acepta una clave o un nombre en productId.
+       * Enviar el nombre ayuda a distinguir claves repetidas.
+       */
+      productId:
+        flow.data.productQuery ||
+        flow.data.productId,
+
+      quantity: flow.data.quantity,
+      address: flow.data.address || '',
+      branchId: flow.data.branchId || ''
+    };
+
+    apiRequest('/api/web/ticket/order', {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    })
+      .then(function (response) {
+        removeTyping(typingId);
+        setSubmitting(false);
+
+        addMessage(
+          '¡Gracias! Ya registré tu pedido.<br><br>' +
+          'Tu folio es: <strong>' +
+          escapeHtml(response.ticketId) +
+          '</strong><br><br>' +
+          'Un asesor revisará tu solicitud.',
           'in'
         );
 
         flow.step = 'finished';
-        flow.data.ticketId = ticketId;
-        flow.data.assignedContact = assignedContact;
-        isSubmitting = false;
 
-        showWhatsAppPanel(assignedContact, ticketId);
+        showWhatsAppPanel(
+          response.assignedContact,
+          response.ticketId,
+          response.assignedContactLink
+        );
       })
       .catch(function (error) {
         removeTyping(typingId);
-        isSubmitting = false;
+        setSubmitting(false);
 
         addMessage(
-          'No pude registrar el caso en el NAS.<br><br>' +
-          'Detalle: ' + escapeHtml(error.message || String(error)) + '<br><br>' +
-          'Tus datos siguen en el formulario. Puedes intentar nuevamente.',
+          'No pude registrar el pedido en el NAS.<br><br>' +
+          'Detalle: ' +
+          escapeHtml(friendlyError(error)) +
+          '<br><br>' +
+          'Tus datos siguen guardados para que lo intentes nuevamente.',
           'in'
         );
 
         optsEl.innerHTML =
           '<button class="cb-opt-btn" onclick="cbRetryTicket()">' +
-            '<span class="cb-opt-icon">🔄</span>' +
-            '<span class="cb-opt-meta"><span class="cb-opt-title">Intentar nuevamente</span></span>' +
+          '<span class="cb-opt-icon">🔄</span>' +
+          '<span class="cb-opt-meta">' +
+          '<span class="cb-opt-title">Intentar nuevamente</span>' +
+          '</span>' +
           '</button>' +
-          '<button class="cb-back-btn" onclick="cbGoBack()">← Volver al menú</button>';
+
+          '<button class="cb-back-btn" onclick="cbGoBack()">' +
+          '← Volver al menú' +
+          '</button>';
       });
   }
 
-  function buildOrderTicketPayload() {
-    var d = flow.data;
+  function createTechnicalTicket() {
+    if (isSubmitting) return;
 
-    return {
-      type: 'pedido',
-      departmentKey: 'PEDIDOS',
-      customer: {
-        name: d.name,
-        phone: d.phone,
-        city: d.city,
-        source: 'web'
-      },
-      details: {
-        productId: d.productId,
-        product: d.product,
-        quantity: d.quantity,
-        deliveryType: d.deliveryType,
-        address: d.address || '',
-        branchId: d.branchId || '',
-        branchName: d.branchName || ''
-      }
+    setSubmitting(true);
+    clearOptions();
+
+    flow.data.pendingTicketType =
+      'technical';
+
+    var typingId = showTyping();
+
+    var payload = {
+      sessionId: getSessionId(),
+      requestId: ensureRequestId('TECH'),
+      departmentKey:
+        flow.data.departmentKey,
+      name: flow.data.name,
+      phone: flow.data.phone,
+      material: flow.data.material,
+      conditions: flow.data.conditions,
+      goal: flow.data.goal
     };
+
+    apiRequest('/api/web/ticket/technical', {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    })
+      .then(function (response) {
+        removeTyping(typingId);
+        setSubmitting(false);
+
+        addMessage(
+          'Gracias ✅ Ya levanté tu ficha básica de asesoría técnica.<br><br>' +
+          'Tu folio es: <strong>' +
+          escapeHtml(response.ticketId) +
+          '</strong><br><br>' +
+          'Un asesor revisará tu solicitud.',
+          'in'
+        );
+
+        flow.step = 'finished';
+
+        showWhatsAppPanel(
+          response.assignedContact,
+          response.ticketId,
+          response.assignedContactLink
+        );
+      })
+      .catch(function (error) {
+        removeTyping(typingId);
+        setSubmitting(false);
+
+        addMessage(
+          'No pude registrar la asesoría técnica en el NAS.<br><br>' +
+          'Detalle: ' +
+          escapeHtml(friendlyError(error)) +
+          '<br><br>' +
+          'Tus datos siguen guardados para que lo intentes nuevamente.',
+          'in'
+        );
+
+        optsEl.innerHTML =
+          '<button class="cb-opt-btn" onclick="cbRetryTicket()">' +
+          '<span class="cb-opt-icon">🔄</span>' +
+          '<span class="cb-opt-meta">' +
+          '<span class="cb-opt-title">Intentar nuevamente</span>' +
+          '</span>' +
+          '</button>' +
+
+          '<button class="cb-back-btn" onclick="cbGoBack()">' +
+          '← Volver al menú' +
+          '</button>';
+      });
   }
 
-  function buildTechnicalTicketPayload() {
-    var d = flow.data;
-
-    return {
-      type: 'asesoria_tecnica',
-      departmentKey: d.departmentKey,
-      customer: {
-        name: d.name,
-        phone: d.phone,
-        source: 'web'
-      },
-      details: {
-        materials: d.material,
-        conditions: d.conditions,
-        goal: d.goal
-      }
-    };
-  }
-
-  /* =============================================================
-     FLUJOS
-  ============================================================= */
+  /* ============================================================
+     BOTONES DEL MENÚ PRINCIPAL
+  ============================================================ */
 
   window.cbPickMenu = function (option) {
     var labels = {
-      catalogo: 'Ver catálogo de productos',
-      precios: 'Consultar precio por ID',
-      pedido: 'Hacer pedido',
-      asesoria: 'Asesoría técnica'
+      catalogo:
+        'Ver catálogo de productos',
+
+      precios:
+        'Consultar precio con clave',
+
+      pedido:
+        'Hacer pedido',
+
+      asesoria:
+        'Asesoría técnica'
     };
 
-    addMessage(escapeHtml(labels[option] || option), 'out');
+    addMessage(
+      escapeHtml(
+        labels[option] ||
+        option
+      ),
+      'out'
+    );
+
     clearOptions();
 
-    if (!isBusinessHours()) {
+    if (
+      !isBusinessHours()
+    ) {
       addMessage(
-        'Aviso: nuestro horario de atención es de ' + businessHoursText() +
-        '. Aun así puedes dejar tus datos y se dará seguimiento.',
+        'Aviso: nuestro horario de atención es de ' +
+        businessHoursText() +
+        '. Aun así puedes registrar tus datos y un asesor dará seguimiento.',
         'in'
       );
     }
 
-    if (option === 'catalogo') {
+    if (
+      option === 'catalogo'
+    ) {
       resetFlow();
 
       botReply(
         'Claro ✅<br><br>' +
-        'Te voy a mostrar el catálogo PDF. Puede tardar un poco.<br><br>' +
-        'Después puedes elegir consultar precio por ID, hacer pedido o solicitar asesoría técnica.',
+        'Puedes abrir el catálogo PDF.<br><br>' +
+        'Después puedes consultar precio, hacer un pedido o solicitar asesoría técnica.',
         showCatalogOptions
       );
+
       return;
     }
 
-    if (option === 'precios') {
-      flow.step = 'price_id';
-      flow.data = {};
+    if (
+      option === 'precios'
+    ) {
+      resetFlow();
+      flow.step = 'price_search_mode';
 
-      botReply('Por favor escribe el ID del producto que quieres consultar.', function () {
-        showTextInput('ID del producto', 'Ejemplo: PINT-001');
-      });
+      botReply(
+        '¿Cómo deseas consultar el precio?',
+        showPriceSearchMode
+      );
+
       return;
     }
 
-    if (option === 'pedido') {
+    if (
+      option === 'pedido'
+    ) {
+      resetFlow();
       flow.step = 'order_name';
-      flow.data = {};
 
-      botReply('¡Perfecto! Vamos a registrar tu pedido.', function () {
-        showTextInput('¿Cuál es tu nombre?', 'Escribe tu nombre');
-      });
+      botReply(
+        '¡Perfecto! Vamos a registrar tu pedido.',
+        function () {
+          showTextInput(
+            '¿Cuál es tu nombre?',
+            'Escribe tu nombre'
+          );
+        }
+      );
+
       return;
     }
 
-    if (option === 'asesoria') {
+    if (
+      option === 'asesoria'
+    ) {
+      resetFlow();
       flow.step = 'tech_department';
-      flow.data = {};
 
-      botReply('Selecciona el departamento que corresponde a tu solicitud.', showDepartmentOptions);
+      botReply(
+        'Selecciona el departamento correcto:',
+        showDepartmentOptions
+      );
     }
   };
 
-  window.cbSubmitText = function () {
-    var input = document.getElementById('cb-text-input');
-    if (!input || isSubmitting) return;
+  window.cbChoosePriceMode = function (mode) {
+    if (mode === 'search') {
+      addMessage(
+        'Buscar por clave o nombre',
+        'out'
+      );
 
-    var value = String(input.value || '').trim();
+      flow.step =
+        'price_product_query';
+
+      botReply(
+        'Escribe la clave o el nombre del producto que deseas consultar.<br><br>' +
+        'Ejemplos:<br>' +
+        'KPU-101<br>' +
+        'KIM-001<br>' +
+        'ACRILEST MATE<br>' +
+        'CK-314<br><br>' +
+        'También puedes escribir pinturas.',
+        function () {
+          showTextInput(
+            'Clave o nombre del producto',
+            'Ejemplo: KPU-101'
+          );
+        }
+      );
+
+      return;
+    }
+
+    addMessage(
+      'Ver todas las pinturas e impermeabilizantes',
+      'out'
+    );
+
+    loadAndShowPaints('price');
+  };
+
+  window.cbPickPaint = function (index) {
+    var selected =
+      paintProducts[index];
+
+    if (!selected) {
+      botReply(
+        'No encontré esa pintura.',
+        function () {
+          showPaintOptions(
+            paintProducts
+          );
+        }
+      );
+
+      return;
+    }
+
+    addMessage(
+      escapeHtml(
+        selected.product
+      ),
+      'out'
+    );
+
+    clearOptions();
+
+    if (
+      flow.step ===
+      'order_paint_choice'
+    ) {
+      selectOrderProduct(selected);
+      return;
+    }
+
+    selectPriceProduct(selected);
+  };
+
+  window.cbPickDepartment = function (
+    departmentKey
+  ) {
+    var department =
+      DEPARTMENTS[departmentKey];
+
+    if (!department) {
+      botReply(
+        'No reconocí el departamento.',
+        showDepartmentOptions
+      );
+
+      return;
+    }
+
+    addMessage(
+      escapeHtml(
+        department.label
+      ),
+      'out'
+    );
+
+    clearOptions();
+
+    flow.data.departmentKey =
+      department.key;
+
+    flow.step = 'tech_name';
+
+    botReply(
+      '¿Cuál es tu nombre?',
+      function () {
+        showTextInput(
+          '¿Cuál es tu nombre?',
+          'Escribe tu nombre'
+        );
+      }
+    );
+  };
+
+  window.cbPickBranch = function (
+    branchId
+  ) {
+    var branches = getBranches();
+    var selected = null;
+
+    for (
+      var i = 0;
+      i < branches.length;
+      i++
+    ) {
+      if (
+        String(branches[i].id) ===
+        String(branchId)
+      ) {
+        selected = branches[i];
+        break;
+      }
+    }
+
+    if (!selected) {
+      botReply(
+        'No encontré esa sucursal.',
+        function () {
+          showBranchOptions(
+            'Selecciona una sucursal:'
+          );
+        }
+      );
+
+      return;
+    }
+
+    addMessage(
+      escapeHtml(
+        selected.name
+      ),
+      'out'
+    );
+
+    clearOptions();
+
+    flow.data.branchId =
+      selected.id;
+
+    flow.data.branchName =
+      selected.name +
+      ' - ' +
+      selected.address;
+
+    flow.data.deliveryType =
+      'Compra o recolección en ' +
+      selected.name;
+
+    createOrderTicket();
+  };
+
+  /* ============================================================
+     RESPUESTAS ESCRITAS
+  ============================================================ */
+
+  window.cbSubmitText = function () {
+    var input =
+      document.getElementById(
+        'cb-text-input'
+      );
+
+    if (
+      !input ||
+      isSubmitting
+    ) {
+      return;
+    }
+
+    var value =
+      String(
+        input.value ||
+        ''
+      ).trim();
+
     if (!value) return;
 
-    addMessage(escapeHtml(value), 'out');
+    addMessage(
+      escapeHtml(value),
+      'out'
+    );
+
     clearOptions();
     handleTextAnswer(value);
   };
 
   function handleTextAnswer(value) {
-    var clean = normalizeText(value);
+    var clean =
+      normalizeText(value);
 
-    if (clean === 'menu' || clean === 'menú' || clean === 'reiniciar' || clean === 'inicio') {
+    if (
+      clean === 'menu' ||
+      clean === 'menú' ||
+      clean === 'reiniciar' ||
+      clean === 'inicio'
+    ) {
       resetFlow();
-      botReply('Claro, volvemos al menú principal.', showMainMenu);
+
+      botReply(
+        'Claro, volvemos al menú principal.',
+        showMainMenu
+      );
+
       return;
     }
 
-    if (clean === 'test') {
-      apiRequest('/health', { method: 'GET' })
+    if (
+      clean === 'cancelar'
+    ) {
+      resetFlow();
+
+      botReply(
+        'Proceso cancelado.',
+        showMainMenu
+      );
+
+      return;
+    }
+
+    if (
+      clean === 'test'
+    ) {
+      var testTypingId =
+        showTyping();
+
+      apiRequest(
+        '/api/web/config',
+        {
+          method: 'GET'
+        }
+      )
         .then(function (response) {
+          removeTyping(
+            testTypingId
+          );
+
           botReply(
-            '✅ El chatbot web y el NAS están respondiendo.<br><br>' +
-            'Estado: ' + escapeHtml(response.status || 'activo'),
+            '✅ El chatbot web y el NAS están conectados.<br><br>' +
+            'Empresa: ' +
+            escapeHtml(
+              response.companyName ||
+              CONFIG.companyName
+            ) +
+            '<br>' +
+            'Horario: ' +
+            escapeHtml(
+              response.schedule ||
+              businessHoursText()
+            ),
             showMainMenu
           );
         })
-        .catch(function () {
+        .catch(function (error) {
+          removeTyping(
+            testTypingId
+          );
+
           botReply(
-            'El chatbot web funciona, pero no pude comunicarme con el NAS.',
+            'El chatbot web funciona, pero no pudo comunicarse con el NAS.<br><br>' +
+            escapeHtml(
+              friendlyError(error)
+            ),
             showMainMenu
           );
         });
+
       return;
     }
 
     switch (flow.step) {
-      case 'price_id':
-        var requestedId = normalizeId(value);
-        var typingId = showTyping();
+      case 'price_product_query':
+        if (
+          clean === 'pinturas' ||
+          clean === 'ver pinturas'
+        ) {
+          loadAndShowPaints(
+            'price'
+          );
 
-        findProductById(requestedId)
-          .then(function (product) {
-            removeTyping(typingId);
+          return;
+        }
 
-            if (!product) {
-              botReply(
-                'Lo siento, no encontré ese producto en la base de precios.<br><br>' +
-                'Verifica que el ID esté escrito correctamente.<br>' +
-                'Ejemplo: PINT-001',
-                function () {
-                  showTextInput('ID del producto', 'Ejemplo: PINT-001');
-                }
-              );
-              return;
-            }
-
-            var normalizedProduct = normalizeProduct(product);
-            flow.data.productId = normalizedProduct.id;
-            flow.data.product = normalizedProduct;
-            flow.step = 'menu';
-
-            botReply(
-              'Producto encontrado ✅<br><br>' +
-              productDetailsHtml(normalizedProduct) + '<br><br>' +
-              'Si deseas hacer pedido, selecciona la opción 3.',
-              showMainMenu
-            );
-          })
-          .catch(function (error) {
-            removeTyping(typingId);
-            botReply(
-              'No pude consultar la base de precios del NAS.<br><br>' +
-              'Detalle: ' + escapeHtml(error.message || String(error)),
-              function () {
-                showTextInput('ID del producto', 'Ejemplo: PINT-001');
-              }
-            );
-          });
+        searchPriceProduct(value);
         break;
 
       case 'order_name':
         flow.data.name = value;
         flow.step = 'order_phone';
 
-        botReply('Gracias, ' + escapeHtml(value) + '.', function () {
-          showTextInput('¿Cuál es tu número de WhatsApp?', 'Ejemplo: 4771287534');
-        });
+        botReply(
+          'Gracias, ' +
+          escapeHtml(value) +
+          '.',
+          function () {
+            showTextInput(
+              '¿Cuál es tu número de WhatsApp?',
+              'Ejemplo: 4771287534'
+            );
+          }
+        );
         break;
 
       case 'order_phone':
-        var orderPhone = normalizeMexicoPhone(value);
+        var orderPhone =
+          normalizeMexicoPhone(value);
 
         if (!orderPhone) {
-          botReply('No entendí el número. Escríbelo con 10 dígitos.', function () {
-            showTextInput('¿Cuál es tu número de WhatsApp?', 'Ejemplo: 4771287534');
-          });
+          botReply(
+            'Escribe un número mexicano válido de 10 dígitos.',
+            function () {
+              showTextInput(
+                '¿Cuál es tu número de WhatsApp?',
+                'Ejemplo: 4771287534'
+              );
+            }
+          );
+
           return;
         }
 
-        flow.data.phone = orderPhone;
-        flow.step = 'order_city';
+        flow.data.phone =
+          orderPhone;
 
-        botReply('Gracias. Nos encontramos en León, Guanajuato.', function () {
-          showTextInput('¿En qué ciudad te encuentras?', 'Ejemplo: León, Guanajuato');
-        });
+        flow.step =
+          'order_city';
+
+        botReply(
+          '¿En qué ciudad te encuentras?',
+          function () {
+            showTextInput(
+              'Ciudad',
+              'Ejemplo: León, Guanajuato'
+            );
+          }
+        );
         break;
 
       case 'order_city':
         flow.data.city = value;
-        flow.step = 'order_product_id';
 
-        botReply('Gracias.', function () {
-          showTextInput('Escribe el ID del producto que deseas', 'Ejemplo: PINT-001');
-        });
+        flow.step =
+          'order_product_query';
+
+        botReply(
+          'Escribe la clave o el nombre del producto.<br><br>' +
+          'Ejemplos:<br>' +
+          'KPU-101<br>' +
+          'KIM-001<br>' +
+          'ACRILEST MATE<br>' +
+          'CK-314<br><br>' +
+          'También puedes escribir pinturas para ver la lista completa.',
+          function () {
+            showTextInput(
+              'Clave o nombre del producto',
+              'Ejemplo: KPU-101'
+            );
+          }
+        );
         break;
 
-      case 'order_product_id':
-        var orderProductId = normalizeId(value);
-        var orderTypingId = showTyping();
+      case 'order_product_query':
+        if (
+          clean === 'pinturas' ||
+          clean === 'ver pinturas'
+        ) {
+          loadAndShowPaints(
+            'order'
+          );
 
-        findProductById(orderProductId)
-          .then(function (product) {
-            removeTyping(orderTypingId);
+          return;
+        }
 
-            if (!product) {
-              botReply(
-                'Lo siento, no encontré ese producto en la base de precios.<br><br>' +
-                'Verifica el ID e inténtalo nuevamente.',
-                function () {
-                  showTextInput('ID del producto', 'Ejemplo: PINT-001');
-                }
-              );
-              return;
-            }
-
-            var normalizedProduct = normalizeProduct(product);
-            flow.data.productId = normalizedProduct.id;
-            flow.data.product = normalizedProduct;
-            flow.step = 'order_quantity';
-
-            botReply(
-              'Producto seleccionado ✅<br><br>' +
-              productDetailsHtml(normalizedProduct),
-              function () {
-                showTextInput('¿Qué cantidad necesitas?', 'Ejemplo: 6');
-              }
-            );
-          })
-          .catch(function (error) {
-            removeTyping(orderTypingId);
-            botReply(
-              'No pude consultar la base de productos del NAS.<br><br>' +
-              escapeHtml(error.message || String(error)),
-              function () {
-                showTextInput('ID del producto', 'Ejemplo: PINT-001');
-              }
-            );
-          });
+        searchOrderProduct(value);
         break;
 
       case 'order_quantity':
-        var quantity = parseQuantity(value);
+        var quantity =
+          parseQuantity(value);
 
-        if (!quantity) {
-          botReply('Escribe una cantidad válida usando números.', function () {
-            showTextInput('¿Qué cantidad necesitas?', 'Ejemplo: 6');
-          });
-          return;
-        }
-
-        flow.data.quantity = quantity;
-
-        if (quantity >= 5 && isLeonCity(flow.data.city)) {
-          flow.data.deliveryType = 'Entrega a domicilio en León';
-          flow.step = 'order_address';
-
+        if (
+          quantity <= 0
+        ) {
           botReply(
-            'Como tu pedido es de ' + quantity +
-            ' piezas y estás en León, podemos revisar entrega a domicilio.',
+            'Escribe la cantidad usando un número. Ejemplo: 5',
             function () {
-              showTextInput('Escribe tu dirección completa', 'Calle, número, colonia y referencias');
+              showTextInput(
+                '¿Qué cantidad necesitas?',
+                'Ejemplo: 5'
+              );
             }
           );
+
           return;
         }
 
-        flow.data.deliveryType = 'Recoge/compra en sucursal';
-        flow.step = 'order_branch';
+        flow.data.quantity =
+          quantity;
 
-        if (quantity >= 5 && !isLeonCity(flow.data.city)) {
+        if (
+          quantity >= 5 &&
+          isLeonCity(
+            flow.data.city
+          )
+        ) {
+          flow.data.deliveryType =
+            'Entrega a domicilio en León';
+
+          flow.step =
+            'order_address';
+
           botReply(
-            'Por ahora la entrega a domicilio aplica solamente en León, Guanajuato.',
+            'Por favor escribe la dirección completa de entrega.',
             function () {
-              showBranchOptions('Selecciona la sucursal donde deseas comprar o recoger:');
+              showTextInput(
+                'Dirección completa',
+                'Calle, número, colonia y referencias'
+              );
             }
           );
+
           return;
         }
+
+        flow.data.deliveryType =
+          'Compra o recolección en sucursal';
+
+        flow.step =
+          'order_branch';
+
+        var branchMessage =
+          quantity >= 5
+            ? 'La entrega a domicilio actualmente aplica únicamente en León, Guanajuato.'
+            : 'Para pedidos menores a 5 piezas debes seleccionar una sucursal.';
 
         botReply(
-          'Para pedidos menores a 5 piezas puedes acudir a una de nuestras sucursales.',
+          branchMessage,
           function () {
-            showBranchOptions('Selecciona la sucursal donde deseas comprar o recoger:');
+            showBranchOptions(
+              'Selecciona una sucursal:'
+            );
           }
         );
         break;
 
       case 'order_address':
-        flow.data.address = value;
-        finishWithTicket(
-          buildOrderTicketPayload(),
-          '¡Gracias! Ya registré tu pedido con entrega a domicilio.'
-        );
+        flow.data.address =
+          value;
+
+        createOrderTicket();
         break;
 
       case 'tech_name':
-        flow.data.name = value;
-        flow.step = 'tech_phone';
+        flow.data.name =
+          value;
 
-        botReply('Gracias, ' + escapeHtml(value) + '.', function () {
-          showTextInput('¿Cuál es tu número de WhatsApp?', 'Ejemplo: 4771287534');
-        });
+        flow.step =
+          'tech_phone';
+
+        botReply(
+          'Gracias, ' +
+          escapeHtml(value) +
+          '.',
+          function () {
+            showTextInput(
+              '¿Cuál es tu número de WhatsApp?',
+              'Ejemplo: 4771287534'
+            );
+          }
+        );
         break;
 
       case 'tech_phone':
-        var techPhone = normalizeMexicoPhone(value);
+        var technicalPhone =
+          normalizeMexicoPhone(value);
 
-        if (!techPhone) {
-          botReply('No entendí el número. Escríbelo con 10 dígitos.', function () {
-            showTextInput('¿Cuál es tu número de WhatsApp?', 'Ejemplo: 4771287534');
-          });
+        if (!technicalPhone) {
+          botReply(
+            'Escribe un número mexicano válido de 10 dígitos.',
+            function () {
+              showTextInput(
+                '¿Cuál es tu número de WhatsApp?',
+                'Ejemplo: 4771287534'
+              );
+            }
+          );
+
           return;
         }
 
-        flow.data.phone = techPhone;
-        flow.step = 'tech_material';
+        flow.data.phone =
+          technicalPhone;
 
-        botReply('Gracias.', function () {
-          showTextInput(
-            '¿Qué materiales vas a pegar, unir, sellar, pintar o trabajar?',
-            'Ejemplo: piel con hule, madera con tela'
-          );
-        });
+        flow.step =
+          'tech_material';
+
+        botReply(
+          '¿Qué materiales vas a pegar, unir, sellar, pintar o trabajar?',
+          function () {
+            showTextInput(
+              'Materiales',
+              'Ejemplo: piel con hule, madera con tela'
+            );
+          }
+        );
         break;
 
       case 'tech_material':
-        flow.data.material = value;
-        flow.step = 'tech_conditions';
+        flow.data.material =
+          value;
 
-        botReply('Entendido.', function () {
-          showTextInput(
-            '¿En qué condiciones se usará el producto?',
-            'Ejemplo: calor, humedad, agua, sol o fricción'
-          );
-        });
+        flow.step =
+          'tech_conditions';
+
+        botReply(
+          '¿En qué condiciones se utilizará?<br><br>' +
+          'Ejemplo: calor, humedad, agua, químicos, presión, fricción, movimiento, lavado o sol.',
+          function () {
+            showTextInput(
+              'Condiciones de uso',
+              'Ejemplo: humedad, sol y calor'
+            );
+          }
+        );
         break;
 
       case 'tech_conditions':
-        flow.data.conditions = value;
-        flow.step = 'tech_goal';
+        flow.data.conditions =
+          value;
 
-        botReply('Perfecto.', function () {
-          showTextInput(
-            '¿Qué necesitas que logre el producto?',
-            'Ejemplo: pegar fuerte, secar rápido o resistir calor'
-          );
-        });
+        flow.step =
+          'tech_goal';
+
+        botReply(
+          '¿Qué necesitas que logre el producto?<br><br>' +
+          'Ejemplo: pegar fuerte, resistir calor, ser flexible o secar rápido.',
+          function () {
+            showTextInput(
+              'Objetivo',
+              'Ejemplo: resistir calor y secar rápido'
+            );
+          }
+        );
         break;
 
       case 'tech_goal':
-        flow.data.goal = value;
-        finishWithTicket(
-          buildTechnicalTicketPayload(),
-          'Gracias ✅ Ya levanté tu ficha básica de asesoría técnica.'
-        );
+        flow.data.goal =
+          value;
+
+        createTechnicalTicket();
         break;
 
       default:
         resetFlow();
-        botReply('No entendí tu respuesta. Te muestro el menú principal.', showMainMenu);
+
+        botReply(
+          'No entendí tu respuesta. Te muestro el menú principal.',
+          showMainMenu
+        );
         break;
     }
   }
 
-  window.cbPickDepartment = function (departmentKey) {
-    var department = DEPARTMENTS[departmentKey];
-
-    if (!department) {
-      botReply('No reconocí el departamento.', showDepartmentOptions);
-      return;
-    }
-
-    addMessage(escapeHtml(department.label), 'out');
-    clearOptions();
-
-    flow.data.departmentKey = department.key;
-    flow.step = 'tech_name';
-
-    botReply('Perfecto. Vamos a levantar una ficha básica de asesoría técnica.', function () {
-      showTextInput('¿Cuál es tu nombre?', 'Escribe tu nombre');
-    });
-  };
-
-  window.cbPickBranch = function (branchId) {
-    var branch = null;
-
-    for (var i = 0; i < BRANCHES.length; i++) {
-      if (BRANCHES[i].id === String(branchId)) {
-        branch = BRANCHES[i];
-        break;
-      }
-    }
-
-    if (!branch) {
-      botReply('No encontré esa sucursal.', function () {
-        showBranchOptions('Selecciona una sucursal:');
-      });
-      return;
-    }
-
-    addMessage(escapeHtml(branch.name), 'out');
-    clearOptions();
-
-    flow.data.branchId = branch.id;
-    flow.data.branchName = branch.name + ' - ' + branch.address;
-    flow.data.deliveryType = 'Recoge/compra en ' + branch.name;
-
-    finishWithTicket(
-      buildOrderTicketPayload(),
-      '¡Gracias! Ya registré tu pedido para recoger o comprar en ' + branch.name + '.'
-    );
-  };
-
   window.cbRetryTicket = function () {
-    if (flow.data && flow.data.departmentKey && flow.data.material) {
-      finishWithTicket(
-        buildTechnicalTicketPayload(),
-        'Gracias ✅ Ya levanté tu ficha básica de asesoría técnica.'
-      );
+    if (
+      flow.data.pendingTicketType ===
+      'technical'
+    ) {
+      createTechnicalTicket();
       return;
     }
 
-    finishWithTicket(
-      buildOrderTicketPayload(),
-      '¡Gracias! Ya registré tu pedido.'
-    );
+    createOrderTicket();
   };
 
   window.cbCancelFlow = function () {
-    addMessage('Cancelar', 'out');
+    addMessage(
+      'Cancelar',
+      'out'
+    );
+
     resetFlow();
-    botReply('Proceso cancelado. Volvemos al menú principal.', showMainMenu);
+
+    botReply(
+      'Proceso cancelado. Volvemos al menú principal.',
+      showMainMenu
+    );
   };
 
   window.cbGoBack = function () {
-    addMessage('↩ Menú principal', 'out');
+    addMessage(
+      '↩ Menú principal',
+      'out'
+    );
+
     resetFlow();
     clearOptions();
 
-    botReply('Claro, ¿en qué más te puedo ayudar?', showMainMenu);
+    botReply(
+      'Claro, ¿en qué más te puedo ayudar?',
+      showMainMenu
+    );
   };
 
-  /* =============================================================
-     VISIBILIDAD DEL CHAT
-  ============================================================= */
+  /* ============================================================
+     ABRIR Y CERRAR CHAT
+  ============================================================ */
 
   function openChat() {
     isOpen = true;
-    popup.classList.add('cb-open');
-    toggleBtn.classList.add('cb-open');
-    toggleBtn.setAttribute('aria-expanded', 'true');
-    msgsEl.scrollTop = msgsEl.scrollHeight;
+
+    popup.classList.add(
+      'cb-open'
+    );
+
+    toggleBtn.classList.add(
+      'cb-open'
+    );
+
+    toggleBtn.setAttribute(
+      'aria-expanded',
+      'true'
+    );
+
+    msgsEl.scrollTop =
+      msgsEl.scrollHeight;
   }
 
   function closeChat() {
     isOpen = false;
-    popup.classList.remove('cb-open');
-    toggleBtn.classList.remove('cb-open');
-    toggleBtn.setAttribute('aria-expanded', 'false');
+
+    popup.classList.remove(
+      'cb-open'
+    );
+
+    toggleBtn.classList.remove(
+      'cb-open'
+    );
+
+    toggleBtn.setAttribute(
+      'aria-expanded',
+      'false'
+    );
   }
 
-  toggleBtn.addEventListener('click', function () {
-    isOpen ? closeChat() : openChat();
-  });
+  toggleBtn.addEventListener(
+    'click',
+    function () {
+      if (isOpen) {
+        closeChat();
+      } else {
+        openChat();
+      }
+    }
+  );
 
-  document.addEventListener('keydown', function (event) {
-    if (event.key === 'Escape' && isOpen) closeChat();
-  });
+  document.addEventListener(
+    'keydown',
+    function (event) {
+      if (
+        event.key ===
+          'Escape' &&
+        isOpen
+      ) {
+        closeChat();
+      }
+    }
+  );
 
-  /* =============================================================
-     INICIALIZACIÓN
-  ============================================================= */
+  /* ============================================================
+     INICIO
+  ============================================================ */
 
-  (function init() {
-    createSessionId();
+  getSessionId();
+  initializeServerConnection();
 
-    var typingId = showTyping();
+  var initialTypingId =
+    showTyping();
 
-    setTimeout(function () {
-      removeTyping(typingId);
+  setTimeout(function () {
+    removeTyping(
+      initialTypingId
+    );
 
+    addMessage(
+      'Hola, buen día 👋<br>' +
+      'Estás hablando con el chatbot de ' +
+      escapeHtml(
+        CONFIG.companyName
+      ) +
+      '.',
+      'in'
+    );
+
+    if (
+      !isBusinessHours()
+    ) {
       addMessage(
-        '¡Hola! 👋 Bienvenido a ' + escapeHtml(CONFIG.companyName) +
-        '. Soy tu asistente virtual. ¿En qué puedo ayudarte?',
+        'En este momento nuestros asesores no están disponibles.<br>' +
+        'Nuestro horario de atención es de ' +
+        businessHoursText() +
+        '.<br><br>' +
+        'Aun así puedes registrar tu información y un asesor dará seguimiento.',
         'in'
       );
+    }
 
-      showMainMenu();
-      renderAllMessages();
-    }, 600);
-  })();
+    showMainMenu();
+    renderAllMessages();
+  }, 600);
 })();
