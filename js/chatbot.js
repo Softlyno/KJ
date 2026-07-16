@@ -1,11 +1,11 @@
 /**
- * @file index.js
+ * @file chatbot.js
  * @description Chatbot web de KayserBond conectado al NAS.
  *
- * Este archivo contiene únicamente JavaScript.
- * Conserva el HTML y CSS existentes.
+ * El catálogo PDF se abre directamente desde la página web.
+ * Los precios, pedidos, folios y asesorías se consultan en el NAS.
  *
- * Requiere estos IDs:
+ * Requiere estos IDs en el HTML:
  * - cb-toggle
  * - cb-popup
  * - cb-messages
@@ -15,9 +15,9 @@
 (function () {
   'use strict';
 
-  /* ============================================================
+  /* =========================================================
      CONFIGURACIÓN
-  ============================================================ */
+  ========================================================= */
 
   var CONFIG = {
     companyName: 'KayserBond',
@@ -25,6 +25,11 @@
     apiBaseUrl:
       window.KAYSERBOT_API_BASE ||
       'https://progress-scariness-ripple.ngrok-free.dev',
+
+    // El PDF está en la raíz del repositorio, junto a index.html.
+    catalogUrl:
+      window.location.origin +
+      '/catalogo-kayserbond.pdf',
 
     businessStartHour: 6,
     businessEndHour: 18,
@@ -38,7 +43,8 @@
     {
       id: '1',
       name: 'Sucursal El Coecillo',
-      address: 'La Luz #317-E. Col. El Coecillo, León, Guanajuato'
+      address:
+        'La Luz #317-E. Col. El Coecillo, León, Guanajuato'
     },
     {
       id: '2',
@@ -53,15 +59,17 @@
       key: 'PINTURAS_ADHESIVOS',
       label: 'Pinturas, recubrimientos y adhesivos'
     },
+
     ACABADOS: {
       key: 'ACABADOS',
-      label: 'Acabados, cremas, lavadores e igualaciones'
+      label:
+        'Acabados, cremas, lavadores e igualaciones'
     }
   };
 
-  /* ============================================================
+  /* =========================================================
      ESTADO
-  ============================================================ */
+  ========================================================= */
 
   var messages = [];
   var isOpen = false;
@@ -76,28 +84,46 @@
     requestId: ''
   };
 
-  /* ============================================================
+  /* =========================================================
      ELEMENTOS DEL HTML
-  ============================================================ */
+  ========================================================= */
 
-  var toggleBtn = document.getElementById('cb-toggle');
-  var popup = document.getElementById('cb-popup');
-  var msgsEl = document.getElementById('cb-messages');
-  var optsEl = document.getElementById('cb-options');
+  var toggleBtn =
+    document.getElementById('cb-toggle');
 
-  if (!toggleBtn || !popup || !msgsEl || !optsEl) {
+  var popup =
+    document.getElementById('cb-popup');
+
+  var msgsEl =
+    document.getElementById('cb-messages');
+
+  var optsEl =
+    document.getElementById('cb-options');
+
+  if (
+    !toggleBtn ||
+    !popup ||
+    !msgsEl ||
+    !optsEl
+  ) {
     console.error(
       'KayserBot web: faltan cb-toggle, cb-popup, cb-messages o cb-options.'
     );
+
     return;
   }
 
-  /* ============================================================
+  /* =========================================================
      UTILIDADES
-  ============================================================ */
+  ========================================================= */
 
   function escapeHtml(value) {
-    return String(value === undefined || value === null ? '' : value)
+    return String(
+      value === undefined ||
+      value === null
+        ? ''
+        : value
+    )
       .replace(/&/g, '&amp;')
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;')
@@ -115,7 +141,8 @@
   }
 
   function onlyDigits(value) {
-    return String(value || '').replace(/\D/g, '');
+    return String(value || '')
+      .replace(/\D/g, '');
   }
 
   function normalizeMexicoPhone(value) {
@@ -129,7 +156,10 @@
       return '521' + digits;
     }
 
-    if (digits.length === 11 && digits.charAt(0) === '1') {
+    if (
+      digits.length === 11 &&
+      digits.charAt(0) === '1'
+    ) {
       return '52' + digits;
     }
 
@@ -141,7 +171,10 @@
       return '521' + digits.slice(2);
     }
 
-    if (digits.length === 13 && digits.indexOf('521') === 0) {
+    if (
+      digits.length === 13 &&
+      digits.indexOf('521') === 0
+    ) {
       return digits;
     }
 
@@ -149,7 +182,8 @@
   }
 
   function parseQuantity(value) {
-    var match = String(value || '').match(/\d+/);
+    var match =
+      String(value || '').match(/\d+/);
 
     if (!match) {
       return 0;
@@ -159,24 +193,29 @@
   }
 
   function isLeonCity(city) {
-    return normalizeText(city).indexOf('leon') !== -1;
+    return normalizeText(city)
+      .indexOf('leon') !== -1;
   }
 
   function getCurrentTime() {
-    return new Date().toLocaleTimeString('es-MX', {
-      hour: '2-digit',
-      minute: '2-digit'
-    });
+    return new Date()
+      .toLocaleTimeString('es-MX', {
+        hour: '2-digit',
+        minute: '2-digit'
+      });
   }
 
   function getMexicoHour() {
     try {
       return parseInt(
-        new Intl.DateTimeFormat('en-US', {
-          timeZone: CONFIG.timeZone,
-          hour: '2-digit',
-          hour12: false
-        }).format(new Date()),
+        new Intl.DateTimeFormat(
+          'en-US',
+          {
+            timeZone: CONFIG.timeZone,
+            hour: '2-digit',
+            hour12: false
+          }
+        ).format(new Date()),
         10
       );
     } catch (error) {
@@ -203,26 +242,36 @@
       '-' +
       Date.now() +
       '-' +
-      Math.random().toString(36).slice(2, 12)
+      Math.random()
+        .toString(36)
+        .slice(2, 12)
     );
   }
 
   function getSessionId() {
     try {
-      var saved = localStorage.getItem(CONFIG.sessionKey);
+      var saved =
+        localStorage.getItem(
+          CONFIG.sessionKey
+        );
 
       if (saved) {
         return saved;
       }
 
-      var created = createUniqueId('WEB');
+      var created =
+        createUniqueId('WEB');
 
-      localStorage.setItem(CONFIG.sessionKey, created);
+      localStorage.setItem(
+        CONFIG.sessionKey,
+        created
+      );
 
       return created;
     } catch (error) {
       if (!memorySessionId) {
-        memorySessionId = createUniqueId('WEB');
+        memorySessionId =
+          createUniqueId('WEB');
       }
 
       return memorySessionId;
@@ -231,7 +280,8 @@
 
   function ensureRequestId(prefix) {
     if (!flow.requestId) {
-      flow.requestId = createUniqueId(prefix);
+      flow.requestId =
+        createUniqueId(prefix);
     }
 
     return flow.requestId;
@@ -254,7 +304,9 @@
   function getBranches() {
     if (
       serverConfig &&
-      Array.isArray(serverConfig.branches) &&
+      Array.isArray(
+        serverConfig.branches
+      ) &&
       serverConfig.branches.length > 0
     ) {
       return serverConfig.branches;
@@ -264,69 +316,101 @@
   }
 
   function apiUrl(path) {
-    return CONFIG.apiBaseUrl.replace(/\/$/, '') + path;
+    return (
+      CONFIG.apiBaseUrl
+        .replace(/\/$/, '') +
+      path
+    );
   }
 
-  /* ============================================================
-     PETICIONES AL NAS
-  ============================================================ */
+  /* =========================================================
+     CONEXIÓN CON EL NAS
+  ========================================================= */
 
   function apiRequest(path, options) {
-    var requestOptions = options || {};
-    var controller = new AbortController();
+    var requestOptions =
+      options || {};
 
-    var timeout = setTimeout(function () {
-      controller.abort();
-    }, CONFIG.requestTimeoutMs);
+    var controller =
+      new AbortController();
 
-    requestOptions.headers = Object.assign(
-      {
-        Accept: 'application/json',
-        'ngrok-skip-browser-warning': '1'
-      },
-      requestOptions.headers || {}
-    );
+    var timeout =
+      setTimeout(function () {
+        controller.abort();
+      }, CONFIG.requestTimeoutMs);
+
+    requestOptions.headers =
+      Object.assign(
+        {
+          Accept: 'application/json',
+
+          // Evita la advertencia del plan gratuito de ngrok.
+          'ngrok-skip-browser-warning': '1'
+        },
+        requestOptions.headers || {}
+      );
 
     if (requestOptions.body) {
-      requestOptions.headers['Content-Type'] = 'application/json';
+      requestOptions.headers[
+        'Content-Type'
+      ] = 'application/json';
     }
 
-    requestOptions.signal = controller.signal;
-    requestOptions.cache = 'no-store';
+    requestOptions.signal =
+      controller.signal;
 
-    return fetch(apiUrl(path), requestOptions)
+    requestOptions.cache =
+      'no-store';
+
+    return fetch(
+      apiUrl(path),
+      requestOptions
+    )
       .then(function (response) {
-        return response.text().then(function (rawText) {
-          var payload = {};
+        return response
+          .text()
+          .then(function (rawText) {
+            var payload = {};
 
-          try {
-            payload = rawText ? JSON.parse(rawText) : {};
-          } catch (error) {
-            payload = {
-              message: rawText
-            };
-          }
+            try {
+              payload = rawText
+                ? JSON.parse(rawText)
+                : {};
+            } catch (error) {
+              payload = {
+                message: rawText
+              };
+            }
 
-          if (!response.ok) {
-            var errorCode =
-              payload.error ||
-              payload.message ||
-              'HTTP_' + response.status;
+            if (!response.ok) {
+              var errorCode =
+                payload.error ||
+                payload.message ||
+                (
+                  'HTTP_' +
+                  response.status
+                );
 
-            var requestError = new Error(errorCode);
+              var requestError =
+                new Error(errorCode);
 
-            requestError.code = errorCode;
-            requestError.status = response.status;
+              requestError.status =
+                response.status;
 
-            throw requestError;
-          }
+              throw requestError;
+            }
 
-          return payload;
-        });
+            return payload;
+          });
       })
       .catch(function (error) {
-        if (error && error.name === 'AbortError') {
-          throw new Error('REQUEST_TIMEOUT');
+        if (
+          error &&
+          error.name === 'AbortError'
+        ) {
+          throw new Error(
+            'REQUEST_TIMEOUT'
+          );
         }
 
         throw error;
@@ -337,14 +421,21 @@
   }
 
   function initializeServerConnection() {
-    return apiRequest('/api/web/config', {
-      method: 'GET'
-    })
+    return apiRequest(
+      '/api/web/config',
+      {
+        method: 'GET'
+      }
+    )
       .then(function (config) {
         serverConfig = config;
 
-        if (config && config.companyName) {
-          CONFIG.companyName = config.companyName;
+        if (
+          config &&
+          config.companyName
+        ) {
+          CONFIG.companyName =
+            config.companyName;
         }
 
         return config;
@@ -360,53 +451,62 @@
   }
 
   function lookupProduct(query) {
-    var cleanQuery = String(query || '').trim();
+    var cleanQuery =
+      String(query || '').trim();
 
     return apiRequest(
-      '/api/web/product/' + encodeURIComponent(cleanQuery),
+      '/api/web/product/' +
+        encodeURIComponent(cleanQuery),
       {
         method: 'GET'
       }
     ).then(function (response) {
-      if (!response || !response.product) {
-        throw new Error('PRODUCT_NOT_FOUND');
+      if (
+        !response ||
+        !response.product
+      ) {
+        throw new Error(
+          'PRODUCT_NOT_FOUND'
+        );
       }
 
-      return normalizeProduct(response.product);
+      return normalizeProduct(
+        response.product
+      );
     });
   }
 
   function loadPaintProducts() {
-    return apiRequest('/api/web/paints', {
-      method: 'GET'
-    }).then(function (response) {
+    return apiRequest(
+      '/api/web/paints',
+      {
+        method: 'GET'
+      }
+    ).then(function (response) {
       var products =
-        response && Array.isArray(response.products)
+        response &&
+        Array.isArray(
+          response.products
+        )
           ? response.products
           : [];
 
-      paintProducts = products.map(normalizeProduct);
+      paintProducts =
+        products.map(
+          normalizeProduct
+        );
 
       return paintProducts;
     });
   }
 
   function getCatalogUrl() {
-    var catalogPath =
-      serverConfig && serverConfig.catalogUrl
-        ? serverConfig.catalogUrl
-        : '/catalogo-kayserbond.pdf';
-
-    if (/^https?:\/\//i.test(catalogPath)) {
-      return catalogPath;
-    }
-
-    return apiUrl(catalogPath);
+    return CONFIG.catalogUrl;
   }
 
-  /* ============================================================
+  /* =========================================================
      PRODUCTOS
-  ============================================================ */
+  ========================================================= */
 
   function normalizeProduct(product) {
     var source = product || {};
@@ -470,20 +570,27 @@
   function formatMoney(value) {
     var numeric = Number(value);
 
-    if (!isFinite(numeric) || numeric <= 0) {
+    if (
+      !isFinite(numeric) ||
+      numeric <= 0
+    ) {
       return 'Precio no disponible';
     }
 
-    return new Intl.NumberFormat('es-MX', {
-      style: 'currency',
-      currency: 'MXN',
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2
-    }).format(numeric);
+    return new Intl.NumberFormat(
+      'es-MX',
+      {
+        style: 'currency',
+        currency: 'MXN',
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+      }
+    ).format(numeric);
   }
 
   function productDetailsHtml(product) {
-    var p = normalizeProduct(product);
+    var p =
+      normalizeProduct(product);
 
     var html =
       'Clave: <strong>' +
@@ -499,13 +606,20 @@
 
     if (p.variants.length > 0) {
       html +=
-        '<br><br><strong>Precios de venta al público:</strong>';
+        '<br><br><strong>' +
+        'Precios de venta al público:' +
+        '</strong>';
 
-      for (var i = 0; i < p.variants.length; i++) {
+      for (
+        var i = 0;
+        i < p.variants.length;
+        i++
+      ) {
         html +=
           '<br>• ' +
           escapeHtml(
-            p.variants[i].presentation ||
+            p.variants[i]
+              .presentation ||
             'Presentación'
           ) +
           ': <strong>' +
@@ -528,9 +642,16 @@
     }
 
     if (p.notes.length > 0) {
-      html += '<br><br><strong>Notas:</strong>';
+      html +=
+        '<br><br><strong>' +
+        'Notas:' +
+        '</strong>';
 
-      for (var n = 0; n < p.notes.length; n++) {
+      for (
+        var n = 0;
+        n < p.notes.length;
+        n++
+      ) {
         html +=
           '<br>• ' +
           escapeHtml(p.notes[n]);
@@ -540,27 +661,9 @@
     return html;
   }
 
-  function paintListHtml(products) {
-    var html =
-      '<strong>Pinturas e impermeabilizantes disponibles:</strong><br><br>';
-
-    for (var i = 0; i < products.length; i++) {
-      html +=
-        escapeHtml(i + 1) +
-        ' — ' +
-        escapeHtml(products[i].product);
-
-      if (i < products.length - 1) {
-        html += '<br>';
-      }
-    }
-
-    return html;
-  }
-
-  /* ============================================================
-     RENDERIZADO DEL CHAT
-  ============================================================ */
+  /* =========================================================
+     MENSAJES
+  ========================================================= */
 
   function renderMessage(message) {
     if (message.type === 'typing') {
@@ -584,23 +687,31 @@
       '<div class="cb-msg ' +
       side +
       '">' +
-      message.html +
-      '<div class="cb-msg-time">' +
-      message.time +
-      '</div>' +
+
+        message.html +
+
+        '<div class="cb-msg-time">' +
+          message.time +
+        '</div>' +
+
       '</div>'
     );
   }
 
   function renderAllMessages() {
-    msgsEl.innerHTML = messages
-      .map(renderMessage)
-      .join('');
+    msgsEl.innerHTML =
+      messages
+        .map(renderMessage)
+        .join('');
 
-    msgsEl.scrollTop = msgsEl.scrollHeight;
+    msgsEl.scrollTop =
+      msgsEl.scrollHeight;
   }
 
-  function addMessage(html, direction) {
+  function addMessage(
+    html,
+    direction
+  ) {
     messages.push({
       html: html,
       direction: direction,
@@ -613,7 +724,9 @@
   function showTyping() {
     var typingId =
       Date.now() +
-      Math.floor(Math.random() * 999);
+      Math.floor(
+        Math.random() * 999
+      );
 
     messages.push({
       type: 'typing',
@@ -626,23 +739,39 @@
   }
 
   function removeTyping(typingId) {
-    messages = messages.filter(function (message) {
-      return message.id !== typingId;
-    });
+    messages =
+      messages.filter(
+        function (message) {
+          return (
+            message.id !== typingId
+          );
+        }
+      );
 
     renderAllMessages();
   }
 
-  function botReply(html, callback) {
+  function botReply(
+    html,
+    callback
+  ) {
     clearOptions();
 
-    var typingId = showTyping();
+    var typingId =
+      showTyping();
 
     setTimeout(function () {
       removeTyping(typingId);
-      addMessage(html, 'in');
 
-      if (typeof callback === 'function') {
+      addMessage(
+        html,
+        'in'
+      );
+
+      if (
+        typeof callback ===
+        'function'
+      ) {
         callback();
       }
 
@@ -650,48 +779,69 @@
     }, 450);
   }
 
-  /* ============================================================
-     MENÚS Y CONTROLES
-  ============================================================ */
+  /* =========================================================
+     MENÚ PRINCIPAL
+  ========================================================= */
 
   function showMainMenu() {
     optsEl.innerHTML =
-      '<div class="cb-opt-label">Selecciona una opción:</div>' +
+      '<div class="cb-opt-label">' +
+        'Selecciona una opción:' +
+      '</div>' +
 
       '<button class="cb-opt-btn" onclick="cbPickMenu(\'catalogo\')">' +
         '<span class="cb-opt-icon">1️⃣</span>' +
         '<span class="cb-opt-meta">' +
-          '<span class="cb-opt-title">Ver catálogo de productos</span>' +
-          '<span class="cb-opt-sub">Abrir catálogo PDF</span>' +
+          '<span class="cb-opt-title">' +
+            'Ver catálogo de productos' +
+          '</span>' +
+          '<span class="cb-opt-sub">' +
+            'Abrir catálogo PDF' +
+          '</span>' +
         '</span>' +
       '</button>' +
 
       '<button class="cb-opt-btn" onclick="cbPickMenu(\'precios\')">' +
         '<span class="cb-opt-icon">2️⃣</span>' +
         '<span class="cb-opt-meta">' +
-          '<span class="cb-opt-title">Consultar precio con clave</span>' +
-          '<span class="cb-opt-sub">Buscar por clave o nombre</span>' +
+          '<span class="cb-opt-title">' +
+            'Consultar precio con clave' +
+          '</span>' +
+          '<span class="cb-opt-sub">' +
+            'Buscar por clave o nombre' +
+          '</span>' +
         '</span>' +
       '</button>' +
 
       '<button class="cb-opt-btn" onclick="cbPickMenu(\'pedido\')">' +
         '<span class="cb-opt-icon">3️⃣</span>' +
         '<span class="cb-opt-meta">' +
-          '<span class="cb-opt-title">Hacer pedido</span>' +
-          '<span class="cb-opt-sub">Entrega o recolección</span>' +
+          '<span class="cb-opt-title">' +
+            'Hacer pedido' +
+          '</span>' +
+          '<span class="cb-opt-sub">' +
+            'Entrega o recolección' +
+          '</span>' +
         '</span>' +
       '</button>' +
 
       '<button class="cb-opt-btn" onclick="cbPickMenu(\'asesoria\')">' +
         '<span class="cb-opt-icon">4️⃣</span>' +
         '<span class="cb-opt-meta">' +
-          '<span class="cb-opt-title">Asesoría técnica</span>' +
-          '<span class="cb-opt-sub">Materiales, condiciones y objetivo</span>' +
+          '<span class="cb-opt-title">' +
+            'Asesoría técnica' +
+          '</span>' +
+          '<span class="cb-opt-sub">' +
+            'Materiales, condiciones y objetivo' +
+          '</span>' +
         '</span>' +
       '</button>';
   }
 
-  function showTextInput(label, placeholder) {
+  function showTextInput(
+    label,
+    placeholder
+  ) {
     optsEl.innerHTML =
       '<div class="cb-opt-label">' +
         escapeHtml(label) +
@@ -705,17 +855,27 @@
           'type="text" ' +
           'autocomplete="off" ' +
           'placeholder="' +
-          escapeHtml(placeholder || '') +
+            escapeHtml(
+              placeholder || ''
+            ) +
           '" ' +
-          'onkeydown="if(event.key===\'Enter\'){cbSubmitText();}">' +
+          'onkeydown="' +
+            'if(event.key===\'Enter\'){' +
+              'cbSubmitText();' +
+            '}' +
+          '">' +
 
-        '<button class="cb-send-btn" onclick="cbSubmitText()">' +
+        '<button ' +
+          'class="cb-send-btn" ' +
+          'onclick="cbSubmitText()">' +
           'Enviar' +
         '</button>' +
 
       '</div>' +
 
-      '<button class="cb-back-btn" onclick="cbGoBack()">' +
+      '<button ' +
+        'class="cb-back-btn" ' +
+        'onclick="cbGoBack()">' +
         '← Volver al menú' +
       '</button>';
 
@@ -731,33 +891,50 @@
     }, 50);
   }
 
+  /* =========================================================
+     CATÁLOGO LOCAL
+  ========================================================= */
+
   function showCatalogOptions() {
     optsEl.innerHTML =
       '<a ' +
         'class="cb-wa-btn" ' +
-        'href="#" ' +
-        'onclick="cbOpenCatalog(); return false;">' +
+        'href="' +
+          escapeHtml(
+            getCatalogUrl()
+          ) +
+        '" ' +
+        'target="_blank" ' +
+        'rel="noopener noreferrer">' +
+
         '📄 Abrir catálogo PDF' +
+
       '</a>' +
 
       '<button class="cb-opt-btn" onclick="cbPickMenu(\'precios\')">' +
         '<span class="cb-opt-icon">2️⃣</span>' +
         '<span class="cb-opt-meta">' +
-          '<span class="cb-opt-title">Consultar precio con clave</span>' +
+          '<span class="cb-opt-title">' +
+            'Consultar precio con clave' +
+          '</span>' +
         '</span>' +
       '</button>' +
 
       '<button class="cb-opt-btn" onclick="cbPickMenu(\'pedido\')">' +
         '<span class="cb-opt-icon">3️⃣</span>' +
         '<span class="cb-opt-meta">' +
-          '<span class="cb-opt-title">Hacer pedido</span>' +
+          '<span class="cb-opt-title">' +
+            'Hacer pedido' +
+          '</span>' +
         '</span>' +
       '</button>' +
 
       '<button class="cb-opt-btn" onclick="cbPickMenu(\'asesoria\')">' +
         '<span class="cb-opt-icon">4️⃣</span>' +
         '<span class="cb-opt-meta">' +
-          '<span class="cb-opt-title">Asesoría técnica</span>' +
+          '<span class="cb-opt-title">' +
+            'Asesoría técnica' +
+          '</span>' +
         '</span>' +
       '</button>' +
 
@@ -766,122 +943,76 @@
       '</button>';
   }
 
+  /* =========================================================
+     CONSULTA DE PRECIOS
+  ========================================================= */
+
   function showPriceSearchMode() {
     optsEl.innerHTML =
-      '<div class="cb-opt-label">¿Cómo deseas consultar el precio?</div>' +
+      '<div class="cb-opt-label">' +
+        '¿Cómo deseas consultar el precio?' +
+      '</div>' +
 
       '<button class="cb-opt-btn" onclick="cbChoosePriceMode(\'search\')">' +
         '<span class="cb-opt-icon">1️⃣</span>' +
         '<span class="cb-opt-meta">' +
-          '<span class="cb-opt-title">Buscar por clave o nombre</span>' +
-          '<span class="cb-opt-sub">Ejemplo: KPU-101 o CK-314</span>' +
+          '<span class="cb-opt-title">' +
+            'Buscar por clave o nombre' +
+          '</span>' +
+          '<span class="cb-opt-sub">' +
+            'Ejemplo: KPU-101 o CK-314' +
+          '</span>' +
         '</span>' +
       '</button>' +
 
       '<button class="cb-opt-btn" onclick="cbChoosePriceMode(\'paints\')">' +
         '<span class="cb-opt-icon">2️⃣</span>' +
         '<span class="cb-opt-meta">' +
-          '<span class="cb-opt-title">Ver todas las pinturas e impermeabilizantes</span>' +
+          '<span class="cb-opt-title">' +
+            'Ver todas las pinturas e impermeabilizantes' +
+          '</span>' +
         '</span>' +
       '</button>' +
 
       '<button class="cb-back-btn" onclick="cbGoBack()">' +
         '← Volver al menú' +
       '</button>';
-  }
-
-  function showDepartmentOptions() {
-    optsEl.innerHTML =
-      '<div class="cb-opt-label">Selecciona el departamento correcto:</div>' +
-
-      '<button class="cb-opt-btn" onclick="cbPickDepartment(\'PINTURAS_ADHESIVOS\')">' +
-        '<span class="cb-opt-icon">1️⃣</span>' +
-        '<span class="cb-opt-meta">' +
-          '<span class="cb-opt-title">Pinturas, recubrimientos y adhesivos</span>' +
-        '</span>' +
-      '</button>' +
-
-      '<button class="cb-opt-btn" onclick="cbPickDepartment(\'ACABADOS\')">' +
-        '<span class="cb-opt-icon">2️⃣</span>' +
-        '<span class="cb-opt-meta">' +
-          '<span class="cb-opt-title">Acabados, cremas, lavadores e igualaciones</span>' +
-        '</span>' +
-      '</button>' +
-
-      '<button class="cb-back-btn" onclick="cbGoBack()">' +
-        '← Volver al menú' +
-      '</button>';
-  }
-
-  function showBranchOptions(prefix) {
-    var branches = getBranches();
-
-    var html =
-      '<div class="cb-opt-label">' +
-        escapeHtml(
-          prefix ||
-          'Selecciona una sucursal:'
-        ) +
-      '</div>';
-
-    for (var i = 0; i < branches.length; i++) {
-      html +=
-        '<button class="cb-opt-btn" onclick="cbPickBranch(\'' +
-          escapeHtml(branches[i].id) +
-        '\')">' +
-
-          '<span class="cb-opt-icon">' +
-            escapeHtml(i + 1) +
-            '️⃣' +
-          '</span>' +
-
-          '<span class="cb-opt-meta">' +
-
-            '<span class="cb-opt-title">' +
-              escapeHtml(branches[i].name) +
-            '</span>' +
-
-            '<span class="cb-opt-sub">' +
-              escapeHtml(branches[i].address) +
-            '</span>' +
-
-          '</span>' +
-
-        '</button>';
-    }
-
-    html +=
-      '<button class="cb-back-btn" onclick="cbCancelFlow()">' +
-        'Cancelar' +
-      '</button>';
-
-    optsEl.innerHTML = html;
   }
 
   function showPaintOptions(products) {
     var html =
       '<div class="cb-opt-label">' +
-        'Selecciona la pintura que deseas consultar:' +
+        'Selecciona la pintura:' +
       '</div>';
 
-    for (var i = 0; i < products.length; i++) {
+    for (
+      var i = 0;
+      i < products.length;
+      i++
+    ) {
       html +=
-        '<button class="cb-opt-btn" onclick="cbPickPaint(' +
-          i +
-        ')">' +
+        '<button ' +
+          'class="cb-opt-btn" ' +
+          'onclick="cbPickPaint(' +
+            i +
+          ')">' +
 
           '<span class="cb-opt-icon">' +
-            escapeHtml(i + 1) +
+            String(i + 1) +
           '</span>' +
 
           '<span class="cb-opt-meta">' +
 
             '<span class="cb-opt-title">' +
-              escapeHtml(products[i].product) +
+              escapeHtml(
+                products[i].product
+              ) +
             '</span>' +
 
             '<span class="cb-opt-sub">' +
-              escapeHtml(products[i].id) +
+              escapeHtml(
+                products[i].id
+              ) +
             '</span>' +
 
           '</span>' +
@@ -897,272 +1028,11 @@
     optsEl.innerHTML = html;
   }
 
-  function showWhatsAppPanel(
-    assignedContact,
-    ticketId,
-    directLink
-  ) {
-    if (
-      !assignedContact ||
-      !assignedContact.phone
-    ) {
-      optsEl.innerHTML =
-        '<button class="cb-back-btn" onclick="cbGoBack()">' +
-          '← Volver al menú principal' +
-        '</button>';
-
-      return;
-    }
-
-    var whatsappLink =
-      directLink ||
-      (
-        'https://wa.me/' +
-        onlyDigits(assignedContact.phone) +
-        '?text=' +
-        encodeURIComponent(
-          'Hola, mi folio es ' +
-          ticketId +
-          '.'
-        )
-      );
-
-    optsEl.innerHTML =
-      '<div class="cb-agent-card">' +
-
-        '<div class="cb-agent-name">' +
-          escapeHtml(
-            assignedContact.name ||
-            'Contacto asignado'
-          ) +
-        '</div>' +
-
-        '<div class="cb-agent-role">' +
-          'Atención KayserBond' +
-        '</div>' +
-
-        '<div class="cb-badge">' +
-          '📋 Atención por WhatsApp' +
-        '</div>' +
-
-      '</div>' +
-
-      '<a ' +
-        'class="cb-wa-btn" ' +
-        'href="' +
-        escapeHtml(whatsappLink) +
-        '" ' +
-        'target="_blank" ' +
-        'rel="noopener noreferrer">' +
-
-        'Abrir WhatsApp con ' +
-        escapeHtml(
-          assignedContact.name ||
-          'el contacto asignado'
-        ) +
-
-      '</a>' +
-
-      '<button class="cb-back-btn" onclick="cbGoBack()">' +
-        '← Volver al menú principal' +
-      '</button>';
-  }
-
-  function setSubmitting(value) {
-    isSubmitting = value;
-
-    var controls =
-      optsEl.querySelectorAll(
-        'button, input'
-      );
-
-    for (
-      var i = 0;
-      i < controls.length;
-      i++
-    ) {
-      controls[i].disabled = value;
-    }
-  }
-
-  /* ============================================================
-     ABRIR CATÁLOGO SIN ADVERTENCIA DE NGROK
-  ============================================================ */
-
-  window.cbOpenCatalog = function () {
-    var catalogWindow =
-      window.open('', '_blank');
-
-    if (catalogWindow) {
-      catalogWindow.document.open();
-
-      catalogWindow.document.write(
-        '<!doctype html>' +
-        '<html lang="es">' +
-        '<head>' +
-          '<meta charset="utf-8">' +
-          '<title>Cargando catálogo</title>' +
-        '</head>' +
-        '<body style="font-family:Arial;padding:25px;">' +
-          '<p>Cargando catálogo de KayserBond...</p>' +
-        '</body>' +
-        '</html>'
-      );
-
-      catalogWindow.document.close();
-    }
-
-    fetch(getCatalogUrl(), {
-      method: 'GET',
-      cache: 'no-store',
-      headers: {
-        Accept: 'application/pdf',
-        'ngrok-skip-browser-warning': '1'
-      }
-    })
-      .then(function (response) {
-        if (!response.ok) {
-          throw new Error(
-            'CATALOG_HTTP_' +
-            response.status
-          );
-        }
-
-        return response.blob();
-      })
-      .then(function (pdfBlob) {
-        var pdfUrl =
-          URL.createObjectURL(pdfBlob);
-
-        if (catalogWindow) {
-          catalogWindow.location.href =
-            pdfUrl;
-        } else {
-          var link =
-            document.createElement('a');
-
-          link.href = pdfUrl;
-          link.target = '_blank';
-          link.rel =
-            'noopener noreferrer';
-
-          document.body.appendChild(link);
-
-          link.click();
-          link.remove();
-        }
-
-        setTimeout(function () {
-          URL.revokeObjectURL(pdfUrl);
-        }, 300000);
-      })
-      .catch(function (error) {
-        if (catalogWindow) {
-          catalogWindow.close();
-        }
-
-        console.error(
-          'Error abriendo catálogo:',
-          error
-        );
-
-        botReply(
-          'No pude abrir el catálogo PDF.<br><br>' +
-          'Detalle: ' +
-          escapeHtml(
-            error.message ||
-            String(error)
-          ),
-          showCatalogOptions
-        );
-      });
-  };
-
-  /* ============================================================
-     ERRORES
-  ============================================================ */
-
-  function friendlyError(error) {
-    var code =
-      error && error.message
-        ? String(error.message)
-        : String(error || '');
-
-    if (
-      code.indexOf(
-        'PRODUCT_NOT_FOUND'
-      ) !== -1
-    ) {
-      return 'No encontré ese producto en la lista de precios 2026.';
-    }
-
-    if (
-      code.indexOf(
-        'INVALID_ORDER_DATA'
-      ) !== -1
-    ) {
-      return 'Faltan datos obligatorios del pedido.';
-    }
-
-    if (
-      code.indexOf(
-        'ADDRESS_REQUIRED'
-      ) !== -1
-    ) {
-      return 'Debes escribir la dirección de entrega.';
-    }
-
-    if (
-      code.indexOf(
-        'BRANCH_REQUIRED'
-      ) !== -1
-    ) {
-      return 'Debes seleccionar una sucursal.';
-    }
-
-    if (
-      code.indexOf(
-        'INVALID_TECHNICAL_DATA'
-      ) !== -1
-    ) {
-      return 'Faltan datos obligatorios de la asesoría técnica.';
-    }
-
-    if (
-      code.indexOf(
-        'TOO_MANY_REQUESTS'
-      ) !== -1
-    ) {
-      return 'Se realizaron demasiadas solicitudes. Espera un momento.';
-    }
-
-    if (
-      code.indexOf(
-        'REQUEST_TIMEOUT'
-      ) !== -1
-    ) {
-      return 'El NAS tardó demasiado en responder.';
-    }
-
-    if (
-      code.indexOf(
-        'Failed to fetch'
-      ) !== -1
-    ) {
-      return 'No se pudo establecer conexión con el NAS.';
-    }
-
-    return code;
-  }
-
-  /* ============================================================
-     PINTURAS Y PRODUCTOS
-  ============================================================ */
-
   function loadAndShowPaints(purpose) {
     clearOptions();
 
-    var typingId = showTyping();
+    var typingId =
+      showTyping();
 
     loadPaintProducts()
       .then(function (products) {
@@ -1180,7 +1050,8 @@
             : 'price_paint_choice';
 
         addMessage(
-          paintListHtml(products),
+          'Pinturas e impermeabilizantes disponibles ✅<br><br>' +
+          'Selecciona una opción para consultar sus presentaciones y precios.',
           'in'
         );
 
@@ -1200,7 +1071,7 @@
                 'order_product_query';
 
               showTextInput(
-                'Escribe la clave o nombre del producto',
+                'Clave o nombre del producto',
                 'Ejemplo: KPU-101'
               );
             } else {
@@ -1208,7 +1079,7 @@
                 'price_product_query';
 
               showTextInput(
-                'Escribe la clave o nombre del producto',
+                'Clave o nombre del producto',
                 'Ejemplo: KIM-001'
               );
             }
@@ -1267,7 +1138,8 @@
   function searchPriceProduct(query) {
     clearOptions();
 
-    var typingId = showTyping();
+    var typingId =
+      showTyping();
 
     lookupProduct(query)
       .then(function (product) {
@@ -1275,7 +1147,7 @@
 
         selectPriceProduct(product);
       })
-      .catch(function () {
+      .catch(function (error) {
         removeTyping(typingId);
 
         botReply(
@@ -1292,7 +1164,7 @@
               'price_product_query';
 
             showTextInput(
-              'Clave o nombre del producto',
+              'Clave o nombre',
               'Ejemplo: KPU-101'
             );
           }
@@ -1303,7 +1175,8 @@
   function searchOrderProduct(query) {
     clearOptions();
 
-    var typingId = showTyping();
+    var typingId =
+      showTyping();
 
     lookupProduct(query)
       .then(function (product) {
@@ -1316,13 +1189,13 @@
 
         botReply(
           'No encontré ese producto en la lista de precios 2026.<br><br>' +
-          'Puedes escribir la clave, una parte del nombre o escribir pinturas.',
+          'Puedes escribir una clave, una parte del nombre o pinturas.',
           function () {
             flow.step =
               'order_product_query';
 
             showTextInput(
-              'Clave o nombre del producto',
+              'Clave o nombre',
               'Ejemplo: CK-314'
             );
           }
@@ -1330,9 +1203,274 @@
       });
   }
 
-  /* ============================================================
-     CREACIÓN DE TICKETS
-  ============================================================ */
+  /* =========================================================
+     DEPARTAMENTOS Y SUCURSALES
+  ========================================================= */
+
+  function showDepartmentOptions() {
+    optsEl.innerHTML =
+      '<div class="cb-opt-label">' +
+        'Selecciona el departamento:' +
+      '</div>' +
+
+      '<button class="cb-opt-btn" onclick="cbPickDepartment(\'PINTURAS_ADHESIVOS\')">' +
+        '<span class="cb-opt-icon">1️⃣</span>' +
+        '<span class="cb-opt-meta">' +
+          '<span class="cb-opt-title">' +
+            'Pinturas, recubrimientos y adhesivos' +
+          '</span>' +
+        '</span>' +
+      '</button>' +
+
+      '<button class="cb-opt-btn" onclick="cbPickDepartment(\'ACABADOS\')">' +
+        '<span class="cb-opt-icon">2️⃣</span>' +
+        '<span class="cb-opt-meta">' +
+          '<span class="cb-opt-title">' +
+            'Acabados, cremas, lavadores e igualaciones' +
+          '</span>' +
+        '</span>' +
+      '</button>' +
+
+      '<button class="cb-back-btn" onclick="cbGoBack()">' +
+        '← Volver al menú' +
+      '</button>';
+  }
+
+  function showBranchOptions(prefix) {
+    var branches =
+      getBranches();
+
+    var html =
+      '<div class="cb-opt-label">' +
+        escapeHtml(
+          prefix ||
+          'Selecciona una sucursal:'
+        ) +
+      '</div>';
+
+    for (
+      var i = 0;
+      i < branches.length;
+      i++
+    ) {
+      html +=
+        '<button ' +
+          'class="cb-opt-btn" ' +
+          'onclick="cbPickBranch(\'' +
+            escapeHtml(
+              branches[i].id
+            ) +
+          '\')">' +
+
+          '<span class="cb-opt-icon">' +
+            String(i + 1) +
+            '️⃣' +
+          '</span>' +
+
+          '<span class="cb-opt-meta">' +
+
+            '<span class="cb-opt-title">' +
+              escapeHtml(
+                branches[i].name
+              ) +
+            '</span>' +
+
+            '<span class="cb-opt-sub">' +
+              escapeHtml(
+                branches[i].address
+              ) +
+            '</span>' +
+
+          '</span>' +
+
+        '</button>';
+    }
+
+    html +=
+      '<button class="cb-back-btn" onclick="cbCancelFlow()">' +
+        'Cancelar' +
+      '</button>';
+
+    optsEl.innerHTML = html;
+  }
+
+  /* =========================================================
+     CONTACTO ASIGNADO
+  ========================================================= */
+
+  function showWhatsAppPanel(
+    assignedContact,
+    ticketId,
+    directLink
+  ) {
+    if (
+      !assignedContact ||
+      !assignedContact.phone
+    ) {
+      optsEl.innerHTML =
+        '<button class="cb-back-btn" onclick="cbGoBack()">' +
+          '← Volver al menú principal' +
+        '</button>';
+
+      return;
+    }
+
+    var whatsappLink =
+      directLink ||
+      (
+        'https://wa.me/' +
+        onlyDigits(
+          assignedContact.phone
+        ) +
+        '?text=' +
+        encodeURIComponent(
+          'Hola, mi folio es ' +
+          ticketId +
+          '.'
+        )
+      );
+
+    optsEl.innerHTML =
+      '<div class="cb-agent-card">' +
+
+        '<div class="cb-agent-name">' +
+          escapeHtml(
+            assignedContact.name ||
+            'Contacto asignado'
+          ) +
+        '</div>' +
+
+        '<div class="cb-agent-role">' +
+          'Atención KayserBond' +
+        '</div>' +
+
+        '<div class="cb-badge">' +
+          '📋 Atención por WhatsApp' +
+        '</div>' +
+
+      '</div>' +
+
+      '<a ' +
+        'class="cb-wa-btn" ' +
+        'href="' +
+          escapeHtml(
+            whatsappLink
+          ) +
+        '" ' +
+        'target="_blank" ' +
+        'rel="noopener noreferrer">' +
+
+        'Abrir WhatsApp con ' +
+        escapeHtml(
+          assignedContact.name ||
+          'el contacto asignado'
+        ) +
+
+      '</a>' +
+
+      '<button class="cb-back-btn" onclick="cbGoBack()">' +
+        '← Volver al menú principal' +
+      '</button>';
+  }
+
+  function setSubmitting(value) {
+    isSubmitting = value;
+
+    var controls =
+      optsEl.querySelectorAll(
+        'button, input'
+      );
+
+    for (
+      var i = 0;
+      i < controls.length;
+      i++
+    ) {
+      controls[i].disabled =
+        value;
+    }
+  }
+
+  /* =========================================================
+     ERRORES
+  ========================================================= */
+
+  function friendlyError(error) {
+    var code =
+      error && error.message
+        ? String(error.message)
+        : String(error || '');
+
+    if (
+      code.indexOf(
+        'PRODUCT_NOT_FOUND'
+      ) !== -1
+    ) {
+      return 'Producto no encontrado.';
+    }
+
+    if (
+      code.indexOf(
+        'INVALID_ORDER_DATA'
+      ) !== -1
+    ) {
+      return 'Faltan datos obligatorios del pedido.';
+    }
+
+    if (
+      code.indexOf(
+        'ADDRESS_REQUIRED'
+      ) !== -1
+    ) {
+      return 'Debes escribir la dirección de entrega.';
+    }
+
+    if (
+      code.indexOf(
+        'BRANCH_REQUIRED'
+      ) !== -1
+    ) {
+      return 'Debes seleccionar una sucursal.';
+    }
+
+    if (
+      code.indexOf(
+        'INVALID_TECHNICAL_DATA'
+      ) !== -1
+    ) {
+      return 'Faltan datos obligatorios de la asesoría.';
+    }
+
+    if (
+      code.indexOf(
+        'TOO_MANY_REQUESTS'
+      ) !== -1
+    ) {
+      return 'Se realizaron demasiadas solicitudes. Espera un momento.';
+    }
+
+    if (
+      code.indexOf(
+        'REQUEST_TIMEOUT'
+      ) !== -1
+    ) {
+      return 'El NAS tardó demasiado en responder.';
+    }
+
+    if (
+      code.indexOf(
+        'Failed to fetch'
+      ) !== -1
+    ) {
+      return 'El navegador no pudo conectarse con la API del NAS.';
+    }
+
+    return code;
+  }
+
+  /* =========================================================
+     CREACIÓN DE PEDIDOS
+  ========================================================= */
 
   function createOrderTicket() {
     if (isSubmitting) {
@@ -1345,10 +1483,13 @@
     flow.data.pendingTicketType =
       'order';
 
-    var typingId = showTyping();
+    var typingId =
+      showTyping();
 
     var payload = {
-      sessionId: getSessionId(),
+      sessionId:
+        getSessionId(),
+
       requestId:
         ensureRequestId('ORDER'),
 
@@ -1379,7 +1520,8 @@
       '/api/web/ticket/order',
       {
         method: 'POST',
-        body: JSON.stringify(payload)
+        body:
+          JSON.stringify(payload)
       }
     )
       .then(function (response) {
@@ -1389,7 +1531,9 @@
         addMessage(
           '¡Gracias! Ya registré tu pedido.<br><br>' +
           'Tu folio es: <strong>' +
-          escapeHtml(response.ticketId) +
+            escapeHtml(
+              response.ticketId
+            ) +
           '</strong><br><br>' +
           'Un asesor revisará tu solicitud.',
           'in'
@@ -1422,7 +1566,9 @@
           '<button class="cb-opt-btn" onclick="cbRetryTicket()">' +
             '<span class="cb-opt-icon">🔄</span>' +
             '<span class="cb-opt-meta">' +
-              '<span class="cb-opt-title">Intentar nuevamente</span>' +
+              '<span class="cb-opt-title">' +
+                'Intentar nuevamente' +
+              '</span>' +
             '</span>' +
           '</button>' +
 
@@ -1431,6 +1577,10 @@
           '</button>';
       });
   }
+
+  /* =========================================================
+     CREACIÓN DE ASESORÍAS
+  ========================================================= */
 
   function createTechnicalTicket() {
     if (isSubmitting) {
@@ -1443,10 +1593,13 @@
     flow.data.pendingTicketType =
       'technical';
 
-    var typingId = showTyping();
+    var typingId =
+      showTyping();
 
     var payload = {
-      sessionId: getSessionId(),
+      sessionId:
+        getSessionId(),
+
       requestId:
         ensureRequestId('TECH'),
 
@@ -1473,7 +1626,8 @@
       '/api/web/ticket/technical',
       {
         method: 'POST',
-        body: JSON.stringify(payload)
+        body:
+          JSON.stringify(payload)
       }
     )
       .then(function (response) {
@@ -1481,9 +1635,11 @@
         setSubmitting(false);
 
         addMessage(
-          'Gracias ✅ Ya levanté tu ficha básica de asesoría técnica.<br><br>' +
+          'Gracias ✅ Ya registré tu asesoría técnica.<br><br>' +
           'Tu folio es: <strong>' +
-          escapeHtml(response.ticketId) +
+            escapeHtml(
+              response.ticketId
+            ) +
           '</strong><br><br>' +
           'Un asesor revisará tu solicitud.',
           'in'
@@ -1516,7 +1672,9 @@
           '<button class="cb-opt-btn" onclick="cbRetryTicket()">' +
             '<span class="cb-opt-icon">🔄</span>' +
             '<span class="cb-opt-meta">' +
-              '<span class="cb-opt-title">Intentar nuevamente</span>' +
+              '<span class="cb-opt-title">' +
+                'Intentar nuevamente' +
+              '</span>' +
             '</span>' +
           '</button>' +
 
@@ -1526,79 +1684,230 @@
       });
   }
 
-  /* ============================================================
-     BOTONES DEL MENÚ
-  ============================================================ */
+  /* =========================================================
+     FUNCIONES GLOBALES DE BOTONES
+  ========================================================= */
 
-  window.cbPickMenu = function (option) {
-    var labels = {
-      catalogo:
-        'Ver catálogo de productos',
+  window.cbPickMenu =
+    function (option) {
+      var labels = {
+        catalogo:
+          'Ver catálogo de productos',
 
-      precios:
-        'Consultar precio con clave',
+        precios:
+          'Consultar precio con clave',
 
-      pedido:
-        'Hacer pedido',
+        pedido:
+          'Hacer pedido',
 
-      asesoria:
-        'Asesoría técnica'
+        asesoria:
+          'Asesoría técnica'
+      };
+
+      addMessage(
+        escapeHtml(
+          labels[option] ||
+          option
+        ),
+        'out'
+      );
+
+      clearOptions();
+
+      if (!isBusinessHours()) {
+        addMessage(
+          'Aviso: nuestro horario de atención es de ' +
+          businessHoursText() +
+          '. Aun así puedes registrar tus datos.',
+          'in'
+        );
+      }
+
+      if (
+        option === 'catalogo'
+      ) {
+        resetFlow();
+
+        botReply(
+          'Claro ✅<br><br>' +
+          'Puedes abrir el catálogo PDF directamente desde la página.<br><br>' +
+          'Después puedes consultar precios, hacer un pedido o solicitar asesoría.',
+          showCatalogOptions
+        );
+
+        return;
+      }
+
+      if (
+        option === 'precios'
+      ) {
+        resetFlow();
+
+        flow.step =
+          'price_search_mode';
+
+        botReply(
+          '¿Cómo deseas consultar el precio?',
+          showPriceSearchMode
+        );
+
+        return;
+      }
+
+      if (
+        option === 'pedido'
+      ) {
+        resetFlow();
+
+        flow.step =
+          'order_name';
+
+        botReply(
+          '¡Perfecto! Vamos a registrar tu pedido.',
+          function () {
+            showTextInput(
+              '¿Cuál es tu nombre?',
+              'Escribe tu nombre'
+            );
+          }
+        );
+
+        return;
+      }
+
+      if (
+        option === 'asesoria'
+      ) {
+        resetFlow();
+
+        flow.step =
+          'tech_department';
+
+        botReply(
+          'Selecciona el departamento correcto:',
+          showDepartmentOptions
+        );
+      }
     };
 
-    addMessage(
-      escapeHtml(
-        labels[option] ||
-        option
-      ),
-      'out'
-    );
+  window.cbChoosePriceMode =
+    function (mode) {
+      if (
+        mode === 'search'
+      ) {
+        addMessage(
+          'Buscar por clave o nombre',
+          'out'
+        );
 
-    clearOptions();
+        flow.step =
+          'price_product_query';
 
-    if (!isBusinessHours()) {
+        botReply(
+          'Escribe la clave o el nombre del producto.<br><br>' +
+          'Ejemplos:<br>' +
+          '• KPU-101<br>' +
+          '• KIM-001<br>' +
+          '• ACRILEST MATE<br>' +
+          '• CK-314<br><br>' +
+          'También puedes escribir pinturas.',
+          function () {
+            showTextInput(
+              'Clave o nombre',
+              'Ejemplo: KPU-101'
+            );
+          }
+        );
+
+        return;
+      }
+
       addMessage(
-        'Aviso: nuestro horario de atención es de ' +
-        businessHoursText() +
-        '. Aun así puedes registrar tus datos.',
-        'in'
-      );
-    }
-
-    if (option === 'catalogo') {
-      resetFlow();
-
-      botReply(
-        'Claro ✅<br><br>' +
-        'Puedes abrir el catálogo PDF.<br><br>' +
-        'Después puedes consultar precio, hacer un pedido o solicitar asesoría técnica.',
-        showCatalogOptions
+        'Ver todas las pinturas e impermeabilizantes',
+        'out'
       );
 
-      return;
-    }
+      loadAndShowPaints(
+        'price'
+      );
+    };
 
-    if (option === 'precios') {
-      resetFlow();
+  window.cbPickPaint =
+    function (index) {
+      var selected =
+        paintProducts[index];
+
+      if (!selected) {
+        botReply(
+          'No encontré esa pintura.',
+          function () {
+            showPaintOptions(
+              paintProducts
+            );
+          }
+        );
+
+        return;
+      }
+
+      addMessage(
+        escapeHtml(
+          selected.product
+        ),
+        'out'
+      );
+
+      clearOptions();
+
+      if (
+        flow.step ===
+        'order_paint_choice'
+      ) {
+        selectOrderProduct(
+          selected
+        );
+
+        return;
+      }
+
+      selectPriceProduct(
+        selected
+      );
+    };
+
+  window.cbPickDepartment =
+    function (departmentKey) {
+      var department =
+        DEPARTMENTS[
+          departmentKey
+        ];
+
+      if (!department) {
+        botReply(
+          'No reconocí el departamento.',
+          showDepartmentOptions
+        );
+
+        return;
+      }
+
+      addMessage(
+        escapeHtml(
+          department.label
+        ),
+        'out'
+      );
+
+      clearOptions();
+
+      flow.data.departmentKey =
+        department.key;
 
       flow.step =
-        'price_search_mode';
+        'tech_name';
 
       botReply(
-        '¿Cómo deseas consultar el precio?',
-        showPriceSearchMode
-      );
-
-      return;
-    }
-
-    if (option === 'pedido') {
-      resetFlow();
-
-      flow.step =
-        'order_name';
-
-      botReply(
-        '¡Perfecto! Vamos a registrar tu pedido.',
+        '¿Cuál es tu nombre?',
         function () {
           showTextInput(
             '¿Cuál es tu nombre?',
@@ -1606,232 +1915,106 @@
           );
         }
       );
+    };
 
-      return;
-    }
+  window.cbPickBranch =
+    function (branchId) {
+      var branches =
+        getBranches();
 
-    if (option === 'asesoria') {
-      resetFlow();
+      var selected = null;
 
-      flow.step =
-        'tech_department';
+      for (
+        var i = 0;
+        i < branches.length;
+        i++
+      ) {
+        if (
+          String(
+            branches[i].id
+          ) ===
+          String(branchId)
+        ) {
+          selected =
+            branches[i];
 
-      botReply(
-        'Selecciona el departamento correcto:',
-        showDepartmentOptions
-      );
-    }
-  };
+          break;
+        }
+      }
 
-  window.cbChoosePriceMode = function (mode) {
-    if (mode === 'search') {
+      if (!selected) {
+        botReply(
+          'No encontré esa sucursal.',
+          function () {
+            showBranchOptions(
+              'Selecciona una sucursal:'
+            );
+          }
+        );
+
+        return;
+      }
+
       addMessage(
-        'Buscar por clave o nombre',
+        escapeHtml(
+          selected.name
+        ),
         'out'
       );
 
-      flow.step =
-        'price_product_query';
+      clearOptions();
 
-      botReply(
-        'Escribe la clave o el nombre del producto.<br><br>' +
-        'Ejemplos:<br>' +
-        'KPU-101<br>' +
-        'KIM-001<br>' +
-        'ACRILEST MATE<br>' +
-        'CK-314<br><br>' +
-        'También puedes escribir pinturas.',
-        function () {
-          showTextInput(
-            'Clave o nombre del producto',
-            'Ejemplo: KPU-101'
-          );
-        }
-      );
+      flow.data.branchId =
+        selected.id;
 
-      return;
-    }
+      flow.data.branchName =
+        selected.name +
+        ' - ' +
+        selected.address;
 
-    addMessage(
-      'Ver todas las pinturas e impermeabilizantes',
-      'out'
-    );
+      flow.data.deliveryType =
+        'Compra o recolección en ' +
+        selected.name;
 
-    loadAndShowPaints('price');
-  };
+      createOrderTicket();
+    };
 
-  window.cbPickPaint = function (index) {
-    var selected =
-      paintProducts[index];
-
-    if (!selected) {
-      botReply(
-        'No encontré esa pintura.',
-        function () {
-          showPaintOptions(
-            paintProducts
-          );
-        }
-      );
-
-      return;
-    }
-
-    addMessage(
-      escapeHtml(
-        selected.product
-      ),
-      'out'
-    );
-
-    clearOptions();
-
-    if (
-      flow.step ===
-      'order_paint_choice'
-    ) {
-      selectOrderProduct(selected);
-
-      return;
-    }
-
-    selectPriceProduct(selected);
-  };
-
-  window.cbPickDepartment = function (
-    departmentKey
-  ) {
-    var department =
-      DEPARTMENTS[departmentKey];
-
-    if (!department) {
-      botReply(
-        'No reconocí el departamento.',
-        showDepartmentOptions
-      );
-
-      return;
-    }
-
-    addMessage(
-      escapeHtml(
-        department.label
-      ),
-      'out'
-    );
-
-    clearOptions();
-
-    flow.data.departmentKey =
-      department.key;
-
-    flow.step = 'tech_name';
-
-    botReply(
-      '¿Cuál es tu nombre?',
-      function () {
-        showTextInput(
-          '¿Cuál es tu nombre?',
-          'Escribe tu nombre'
+  window.cbSubmitText =
+    function () {
+      var input =
+        document.getElementById(
+          'cb-text-input'
         );
-      }
-    );
-  };
 
-  window.cbPickBranch = function (
-    branchId
-  ) {
-    var branches = getBranches();
-    var selected = null;
-
-    for (
-      var i = 0;
-      i < branches.length;
-      i++
-    ) {
       if (
-        String(branches[i].id) ===
-        String(branchId)
+        !input ||
+        isSubmitting
       ) {
-        selected = branches[i];
-
-        break;
+        return;
       }
-    }
 
-    if (!selected) {
-      botReply(
-        'No encontré esa sucursal.',
-        function () {
-          showBranchOptions(
-            'Selecciona una sucursal:'
-          );
-        }
+      var value =
+        String(
+          input.value || ''
+        ).trim();
+
+      if (!value) {
+        return;
+      }
+
+      addMessage(
+        escapeHtml(value),
+        'out'
       );
 
-      return;
-    }
+      clearOptions();
 
-    addMessage(
-      escapeHtml(
-        selected.name
-      ),
-      'out'
-    );
+      handleTextAnswer(value);
+    };
 
-    clearOptions();
-
-    flow.data.branchId =
-      selected.id;
-
-    flow.data.branchName =
-      selected.name +
-      ' - ' +
-      selected.address;
-
-    flow.data.deliveryType =
-      'Compra o recolección en ' +
-      selected.name;
-
-    createOrderTicket();
-  };
-
-  /* ============================================================
+  /* =========================================================
      RESPUESTAS ESCRITAS
-  ============================================================ */
-
-  window.cbSubmitText = function () {
-    var input =
-      document.getElementById(
-        'cb-text-input'
-      );
-
-    if (
-      !input ||
-      isSubmitting
-    ) {
-      return;
-    }
-
-    var value =
-      String(
-        input.value ||
-        ''
-      ).trim();
-
-    if (!value) {
-      return;
-    }
-
-    addMessage(
-      escapeHtml(value),
-      'out'
-    );
-
-    clearOptions();
-
-    handleTextAnswer(value);
-  };
+  ========================================================= */
 
   function handleTextAnswer(value) {
     var clean =
@@ -1853,7 +2036,9 @@
       return;
     }
 
-    if (clean === 'cancelar') {
+    if (
+      clean === 'cancelar'
+    ) {
       resetFlow();
 
       botReply(
@@ -1864,7 +2049,9 @@
       return;
     }
 
-    if (clean === 'test') {
+    if (
+      clean === 'test'
+    ) {
       var testTypingId =
         showTyping();
 
@@ -1901,7 +2088,7 @@
           );
 
           botReply(
-            'El chatbot web funciona, pero no pudo comunicarse con el NAS.<br><br>' +
+            'El chatbot funciona, pero no pudo comunicarse con el NAS.<br><br>' +
             escapeHtml(
               friendlyError(error)
             ),
@@ -1957,7 +2144,7 @@
             'Escribe un número mexicano válido de 10 dígitos.',
             function () {
               showTextInput(
-                '¿Cuál es tu número de WhatsApp?',
+                'Número de WhatsApp',
                 'Ejemplo: 4771287534'
               );
             }
@@ -1993,14 +2180,14 @@
         botReply(
           'Escribe la clave o el nombre del producto.<br><br>' +
           'Ejemplos:<br>' +
-          'KPU-101<br>' +
-          'KIM-001<br>' +
-          'ACRILEST MATE<br>' +
-          'CK-314<br><br>' +
+          '• KPU-101<br>' +
+          '• KIM-001<br>' +
+          '• ACRILEST MATE<br>' +
+          '• CK-314<br><br>' +
           'También puedes escribir pinturas.',
           function () {
             showTextInput(
-              'Clave o nombre del producto',
+              'Clave o nombre',
               'Ejemplo: KPU-101'
             );
           }
@@ -2026,9 +2213,11 @@
         var quantity =
           parseQuantity(value);
 
-        if (quantity <= 0) {
+        if (
+          quantity <= 0
+        ) {
           botReply(
-            'Escribe la cantidad usando un número. Ejemplo: 5',
+            'Escribe la cantidad usando un número.',
             function () {
               showTextInput(
                 '¿Qué cantidad necesitas?',
@@ -2056,7 +2245,7 @@
             'order_address';
 
           botReply(
-            'Por favor escribe la dirección completa de entrega.',
+            'Escribe la dirección completa de entrega.',
             function () {
               showTextInput(
                 'Dirección completa',
@@ -2074,13 +2263,10 @@
         flow.step =
           'order_branch';
 
-        var branchMessage =
+        botReply(
           quantity >= 5
             ? 'La entrega a domicilio actualmente aplica únicamente en León, Guanajuato.'
-            : 'Para pedidos menores a 5 piezas debes seleccionar una sucursal.';
-
-        botReply(
-          branchMessage,
+            : 'Para pedidos menores a 5 piezas debes seleccionar una sucursal.',
           function () {
             showBranchOptions(
               'Selecciona una sucursal:'
@@ -2109,7 +2295,7 @@
           '.',
           function () {
             showTextInput(
-              '¿Cuál es tu número de WhatsApp?',
+              'Número de WhatsApp',
               'Ejemplo: 4771287534'
             );
           }
@@ -2125,7 +2311,7 @@
             'Escribe un número mexicano válido de 10 dígitos.',
             function () {
               showTextInput(
-                '¿Cuál es tu número de WhatsApp?',
+                'Número de WhatsApp',
                 'Ejemplo: 4771287534'
               );
             }
@@ -2207,51 +2393,55 @@
     }
   }
 
-  window.cbRetryTicket = function () {
-    if (
-      flow.data.pendingTicketType ===
-      'technical'
-    ) {
-      createTechnicalTicket();
+  window.cbRetryTicket =
+    function () {
+      if (
+        flow.data
+          .pendingTicketType ===
+        'technical'
+      ) {
+        createTechnicalTicket();
 
-      return;
-    }
+        return;
+      }
 
-    createOrderTicket();
-  };
+      createOrderTicket();
+    };
 
-  window.cbCancelFlow = function () {
-    addMessage(
-      'Cancelar',
-      'out'
-    );
+  window.cbCancelFlow =
+    function () {
+      addMessage(
+        'Cancelar',
+        'out'
+      );
 
-    resetFlow();
+      resetFlow();
 
-    botReply(
-      'Proceso cancelado. Volvemos al menú principal.',
-      showMainMenu
-    );
-  };
+      botReply(
+        'Proceso cancelado. Volvemos al menú principal.',
+        showMainMenu
+      );
+    };
 
-  window.cbGoBack = function () {
-    addMessage(
-      '↩ Menú principal',
-      'out'
-    );
+  window.cbGoBack =
+    function () {
+      addMessage(
+        '↩ Menú principal',
+        'out'
+      );
 
-    resetFlow();
-    clearOptions();
+      resetFlow();
+      clearOptions();
 
-    botReply(
-      'Claro, ¿en qué más te puedo ayudar?',
-      showMainMenu
-    );
-  };
+      botReply(
+        'Claro, ¿en qué más te puedo ayudar?',
+        showMainMenu
+      );
+    };
 
-  /* ============================================================
-     ABRIR Y CERRAR CHAT
-  ============================================================ */
+  /* =========================================================
+     ABRIR Y CERRAR EL CHAT
+  ========================================================= */
 
   function openChat() {
     isOpen = true;
@@ -2313,11 +2503,12 @@
     }
   );
 
-  /* ============================================================
+  /* =========================================================
      INICIO
-  ============================================================ */
+  ========================================================= */
 
   getSessionId();
+
   initializeServerConnection();
 
   var initialTypingId =
