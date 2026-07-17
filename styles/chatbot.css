@@ -1,9 +1,18 @@
 /* =============================================================
    chatbot.css
-   Estilos exclusivos del widget de chatbot.
-   Todos los selectores usan el prefijo "cb-" para evitar
-   conflictos con Bootstrap y con style.css.
+   Estilos exclusivos del widget de chatbot KayserBond.
+   Todos los selectores usan el prefijo "cb-".
    ============================================================= */
+
+
+/* ── Ajuste general ─────────────────────────────────────────── */
+
+#cb-popup,
+#cb-popup *,
+#cb-toggle,
+#cb-toggle * {
+  box-sizing: border-box;
+}
 
 
 /* ── Botón flotante ─────────────────────────────────────────── */
@@ -12,337 +21,822 @@
   position: fixed;
   bottom: 24px;
   right: 24px;
+
   width: 60px;
   height: 60px;
+
   border-radius: 50%;
-  background-color: #25D366;
+  background-color: #25d366;
   border: none;
+
   cursor: pointer;
+
   display: flex;
   align-items: center;
   justify-content: center;
+
   z-index: 9999;
-  box-shadow: 0 4px 18px rgba(0, 0, 0, .22);
-  transition: transform .18s ease, box-shadow .18s ease;
+
+  box-shadow:
+    0 4px 18px rgba(0, 0, 0, 0.22);
+
+  transition:
+    transform 0.18s ease,
+    box-shadow 0.18s ease;
+
   padding: 0;
   overflow: hidden;
 }
 
 #cb-toggle:hover {
-  transform: scale(1.08);
-  box-shadow: 0 6px 24px rgba(0, 0, 0, .28);
+  transform: scale(1.06);
+
+  box-shadow:
+    0 6px 24px rgba(0, 0, 0, 0.28);
 }
 
-/* Íconos dentro del botón: transición entre WA y X */
 #cb-toggle .cb-icon-wa,
 #cb-toggle .cb-icon-x {
   position: absolute;
-  transition: opacity .18s ease, transform .18s ease;
+
+  transition:
+    opacity 0.18s ease,
+    transform 0.18s ease;
 }
 
-#cb-toggle .cb-icon-x            { opacity: 0; transform: rotate(-45deg) scale(.7); }
-#cb-toggle.cb-open .cb-icon-wa   { opacity: 0; transform: rotate(45deg)  scale(.7); }
-#cb-toggle.cb-open .cb-icon-x    { opacity: 1; transform: rotate(0deg)   scale(1);  }
+#cb-toggle .cb-icon-x {
+  opacity: 0;
+  transform: rotate(-45deg) scale(0.7);
+}
+
+#cb-toggle.cb-open .cb-icon-wa {
+  opacity: 0;
+  transform: rotate(45deg) scale(0.7);
+}
+
+#cb-toggle.cb-open .cb-icon-x {
+  opacity: 1;
+  transform: rotate(0deg) scale(1);
+}
 
 
-/* ── Panel del chat ─────────────────────────────────────────── */
+/* ── Panel principal del chat ───────────────────────────────── */
 
 #cb-popup {
   position: fixed;
+
   bottom: 96px;
   right: 24px;
+
   width: min(420px, calc(100vw - 32px));
+
+  /*
+   * dvh se adapta mejor a celulares.
+   * vh queda como respaldo para navegadores antiguos.
+   */
   height: min(680px, calc(100vh - 120px));
+  height: min(680px, calc(100dvh - 120px));
+
   border-radius: 16px;
   overflow: hidden;
-  box-shadow: 0 8px 36px rgba(0, 0, 0, .20);
+
+  box-shadow:
+    0 8px 36px rgba(0, 0, 0, 0.2);
+
   display: flex;
   flex-direction: column;
+
   z-index: 9998;
+
   background: #ece5dd;
 
-  transform: translateY(14px) scale(.97);
+  transform:
+    translateY(14px)
+    scale(0.97);
+
   opacity: 0;
   pointer-events: none;
-  transition: transform .22s ease, opacity .22s ease;
+
+  transition:
+    transform 0.22s ease,
+    opacity 0.22s ease;
 }
 
 #cb-popup.cb-open {
-  transform: translateY(0) scale(1);
+  transform:
+    translateY(0)
+    scale(1);
+
   opacity: 1;
-  pointer-events: all;
-}
-
-/* Adaptación a pantallas pequeñas */
-@media (max-width: 600px) {
-  #cb-popup {
-    right: 8px;
-    left: 8px;
-    width: auto;
-    height: calc(100vh - 110px);
-    bottom: 90px;
-  }
-
-  #cb-toggle {
-    right: 18px;
-    bottom: 18px;
-  }
+  pointer-events: auto;
 }
 
 
-/* ── Cabecera del chat ──────────────────────────────────────── */
+/* ── Cabecera ───────────────────────────────────────────────── */
 
 .cb-header {
   background: #075e54;
-  color: #fff;
-  padding: 12px 16px;
+  color: #ffffff;
+
+  padding: 11px 14px;
+
   display: flex;
   align-items: center;
+
   gap: 10px;
-  flex-shrink: 0;
+
+  flex: 0 0 auto;
 }
 
 .cb-avatar {
-  width: 42px;
-  height: 42px;
+  width: 40px;
+  height: 40px;
+
   border-radius: 50%;
-  background: #25D366;
+
+  background: #25d366;
+
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 22px;
+
+  font-size: 21px;
+
   flex-shrink: 0;
 }
 
-.cb-header-name   { font-size: 15px; font-weight: 600; line-height: 1.2; }
-.cb-header-status { font-size: 12px; opacity: .75; }
+.cb-header-name {
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.cb-header-status {
+  font-size: 12px;
+  opacity: 0.75;
+}
 
 
 /* ── Área de mensajes ───────────────────────────────────────── */
 
 .cb-messages {
-  flex: 1;
+  flex: 1 1 auto;
+
+  /*
+   * Necesario para que el área pueda reducirse cuando la lista
+   * de opciones ocupa espacio.
+   */
+  min-height: 0;
+
   overflow-y: auto;
+  overflow-x: hidden;
+
   padding: 12px;
+
   display: flex;
   flex-direction: column;
+
   gap: 5px;
+
   scroll-behavior: smooth;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+.cb-messages::-webkit-scrollbar {
+  width: 6px;
+}
+
+.cb-messages::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.cb-messages::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.22);
+  border-radius: 20px;
 }
 
 .cb-msg {
   max-width: 84%;
-  padding: 8px 11px 5px;
+
+  padding:
+    8px
+    11px
+    5px;
+
   border-radius: 10px;
+
   font-size: 13.5px;
-  line-height: 1.45;
+  line-height: 1.42;
+
+  overflow-wrap: anywhere;
   word-break: break-word;
 }
 
-/* Mensaje entrante (bot) */
 .cb-msg.in {
-  background: #fff;
+  background: #ffffff;
+
   align-self: flex-start;
+
   border-top-left-radius: 2px;
-  color: #111;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, .06);
+
+  color: #111111;
+
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.06);
 }
 
-/* Mensaje saliente (usuario) */
 .cb-msg.out {
   background: #d9fdd3;
+
   align-self: flex-end;
+
   border-top-right-radius: 2px;
-  color: #111;
+
+  color: #111111;
 }
 
 .cb-msg-time {
   font-size: 10px;
   color: #8a8a8a;
+
   text-align: right;
+
   margin-top: 2px;
 }
 
-/* Indicador "escribiendo..." */
+
+/* ── Indicador escribiendo ──────────────────────────────────── */
+
 .cb-typing {
   display: flex;
-  gap: 4px;
   align-items: center;
-  padding: 6px 2px;
+
+  gap: 4px;
+
+  padding:
+    6px
+    2px;
 }
 
 .cb-dot {
   width: 7px;
   height: 7px;
+
   border-radius: 50%;
-  background: #aaa;
-  animation: cbBounce 1.1s infinite;
+
+  background: #aaaaaa;
+
+  animation:
+    cbBounce 1.1s infinite;
 }
 
-.cb-dot:nth-child(2) { animation-delay: .18s; }
-.cb-dot:nth-child(3) { animation-delay: .36s; }
+.cb-dot:nth-child(2) {
+  animation-delay: 0.18s;
+}
+
+.cb-dot:nth-child(3) {
+  animation-delay: 0.36s;
+}
 
 @keyframes cbBounce {
-  0%, 80%, 100% { transform: translateY(0); }
-  40%           { transform: translateY(-5px); }
+  0%,
+  80%,
+  100% {
+    transform: translateY(0);
+  }
+
+  40% {
+    transform: translateY(-5px);
+  }
 }
 
 
 /* ── Panel de opciones ──────────────────────────────────────── */
 
 .cb-options {
-  padding: 8px 10px 10px;
+  /*
+   * Esta es la corrección principal:
+   * la lista ya no expande el chatbot completo.
+   */
+  flex: 0 1 auto;
+  min-height: 0;
+  max-height: 44%;
+
+  overflow-y: auto;
+  overflow-x: hidden;
+
+  padding:
+    8px
+    9px
+    9px;
+
   display: flex;
   flex-direction: column;
+
   gap: 5px;
-  flex-shrink: 0;
+
   background: #f0ece5;
-  border-top: 1px solid rgba(0, 0, 0, .08);
+
+  border-top:
+    1px solid rgba(0, 0, 0, 0.08);
+
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+
+  scrollbar-gutter: stable;
+  touch-action: pan-y;
+}
+
+.cb-options::-webkit-scrollbar {
+  width: 6px;
+}
+
+.cb-options::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.cb-options::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.25);
+  border-radius: 20px;
+}
+
+.cb-options {
+  scrollbar-width: thin;
+  scrollbar-color:
+    rgba(0, 0, 0, 0.25)
+    transparent;
 }
 
 .cb-opt-label {
   font-size: 11px;
-  color: #777;
-  padding: 0 2px 1px;
+  line-height: 1.3;
+
+  color: #666666;
+
+  padding:
+    1px
+    3px
+    3px;
+
+  flex: 0 0 auto;
 }
 
 .cb-opt-btn {
-  background: #fff;
-  border: 1px solid #e0ddd8;
-  border-radius: 8px;
-  padding: 8px 11px;
+  width: 100%;
+
+  min-height: 48px;
+
+  background: #ffffff;
+
+  border:
+    1px solid #dedbd6;
+
+  border-radius: 9px;
+
+  padding:
+    7px
+    10px;
+
   font-size: 13px;
+
   cursor: pointer;
+
   text-align: left;
-  color: #222;
-  transition: background .12s;
+
+  color: #222222;
+
+  transition:
+    background 0.12s ease,
+    border-color 0.12s ease;
+
   display: flex;
   align-items: center;
+
   gap: 9px;
+
+  flex: 0 0 auto;
+
+  font-family: inherit;
 }
 
-.cb-opt-btn:hover { background: #f5f5f5; }
+.cb-opt-btn:hover {
+  background: #f7f7f7;
+  border-color: #cbc7c1;
+}
 
-.cb-opt-icon  { font-size: 17px; flex-shrink: 0; }
-.cb-opt-meta  { display: flex; flex-direction: column; }
-.cb-opt-title { font-size: 13px; }
-.cb-opt-sub   { font-size: 11px; color: #777; margin-top: 1px; }
+.cb-opt-btn:active {
+  background: #eeeeee;
+}
+
+.cb-opt-btn:disabled {
+  opacity: 0.58;
+  cursor: wait;
+}
+
+.cb-opt-icon {
+  width: 24px;
+
+  font-size: 16px;
+  line-height: 1;
+
+  text-align: center;
+
+  flex: 0 0 24px;
+
+  color: #111111;
+}
+
+.cb-opt-meta {
+  min-width: 0;
+
+  display: flex;
+  flex-direction: column;
+
+  gap: 1px;
+}
+
+.cb-opt-title {
+  font-size: 13px;
+  line-height: 1.2;
+
+  color: #171717;
+
+  overflow-wrap: anywhere;
+}
+
+.cb-opt-sub {
+  font-size: 10.5px;
+  line-height: 1.2;
+
+  color: #777777;
+
+  margin-top: 1px;
+
+  overflow-wrap: anywhere;
+}
 
 
-/* ── Botón de WhatsApp ──────────────────────────────────────── */
+/* ── Botón principal verde ──────────────────────────────────── */
 
 .cb-wa-btn {
+  width: 100%;
+
   display: flex;
   align-items: center;
   justify-content: center;
+
   gap: 8px;
-  background: #25D366;
-  color: #fff !important;
+
+  background: #25d366;
+
+  color: #ffffff !important;
+
   border: none;
   border-radius: 10px;
-  padding: 11px 16px;
-  font-size: 14px;
+
+  padding:
+    10px
+    14px;
+
+  font-size: 13.5px;
   font-weight: 600;
+
   cursor: pointer;
+
   text-decoration: none !important;
-  transition: background .15s;
-  width: 100%;
+
+  transition:
+    background 0.15s ease;
+
+  flex: 0 0 auto;
+
+  font-family: inherit;
 }
 
-.cb-wa-btn:hover { background: #1ebe5d; }
+.cb-wa-btn:hover {
+  background: #1ebe5d;
+}
 
 
-/* ── Botón "Volver" ─────────────────────────────────────────── */
+/* ── Botón volver ───────────────────────────────────────────── */
 
 .cb-back-btn {
   background: transparent;
-  border: 1px solid #ccc;
+
+  border:
+    1px solid #cccccc;
+
   border-radius: 8px;
-  padding: 6px 12px;
-  font-size: 12px;
+
+  padding:
+    6px
+    10px;
+
+  font-size: 11.5px;
+
   cursor: pointer;
-  color: #666;
+
+  color: #666666;
+
   display: inline-flex;
   align-items: center;
+
   gap: 5px;
-  transition: background .12s;
+
+  transition:
+    background 0.12s ease;
+
   align-self: flex-start;
+
+  flex: 0 0 auto;
+
+  font-family: inherit;
 }
 
-.cb-back-btn:hover { background: #eaeaea; }
+.cb-back-btn:hover {
+  background: #e6e3df;
+}
 
 
-/* ── Tarjeta de agente asignado ─────────────────────────────── */
+/* ── Tarjeta del agente asignado ────────────────────────────── */
 
 .cb-agent-card {
-  background: #fff;
-  border: 1px solid #e0ddd8;
+  background: #ffffff;
+
+  border:
+    1px solid #e0ddd8;
+
   border-radius: 10px;
-  padding: 9px 12px;
+
+  padding:
+    9px
+    12px;
+
   margin-bottom: 2px;
+
+  flex: 0 0 auto;
 }
 
-.cb-agent-name { font-size: 14px; font-weight: 600; color: #222; }
-.cb-agent-role { font-size: 12px; color: #666; margin-top: 1px; }
+.cb-agent-name {
+  font-size: 14px;
+  font-weight: 600;
+
+  color: #222222;
+}
+
+.cb-agent-role {
+  font-size: 12px;
+
+  color: #666666;
+
+  margin-top: 1px;
+}
 
 .cb-badge {
   display: inline-block;
+
   font-size: 11px;
+
   background: #e6f9ee;
   color: #1a7a3e;
-  padding: 2px 8px;
+
+  padding:
+    2px
+    8px;
+
   border-radius: 20px;
+
   margin-top: 5px;
 }
 
-/* Separador de fecha/hora entre mensajes */
+
+/* ── Separador ──────────────────────────────────────────────── */
+
 .cb-divider {
   text-align: center;
+
   font-size: 11px;
-  color: #999;
-  padding: 2px 0;
+
+  color: #999999;
+
+  padding:
+    2px
+    0;
 }
-/* ── Input para respuestas escritas ─────────────────────────── */
+
+
+/* ── Input de respuestas ────────────────────────────────────── */
 
 .cb-input-wrap {
-  display: flex;
-  gap: 8px;
   width: 100%;
+
+  display: flex;
+
+  gap: 7px;
+
+  flex: 0 0 auto;
 }
 
 .cb-text-input {
-  flex: 1;
+  flex: 1 1 auto;
+
   min-width: 0;
-  padding: 10px 12px;
-  border: 1px solid #d6d2cc;
+
+  padding:
+    9px
+    11px;
+
+  border:
+    1px solid #d6d2cc;
+
   border-radius: 10px;
+
   outline: none;
-  font-size: 13.5px;
-  background: #fff;
-  color: #111;
+
+  font-size: 13px;
+
+  background: #ffffff;
+  color: #111111;
+
+  font-family: inherit;
 }
 
 .cb-text-input:focus {
-  border-color: #25D366;
-  box-shadow: 0 0 0 2px rgba(37, 211, 102, 0.15);
+  border-color: #25d366;
+
+  box-shadow:
+    0 0 0 2px
+    rgba(37, 211, 102, 0.15);
 }
 
 .cb-text-input::placeholder {
-  color: #999;
+  color: #999999;
 }
 
 .cb-send-btn {
-  padding: 10px 13px;
+  padding:
+    9px
+    12px;
+
   border: none;
+
   border-radius: 10px;
-  background: #25D366;
-  color: #fff;
+
+  background: #25d366;
+  color: #ffffff;
+
   cursor: pointer;
+
   font-size: 13px;
   font-weight: 600;
-  flex-shrink: 0;
+
+  flex: 0 0 auto;
+
+  font-family: inherit;
 }
 
 .cb-send-btn:hover {
   background: #1ebe5d;
+}
+
+.cb-send-btn:disabled {
+  opacity: 0.58;
+  cursor: wait;
+}
+
+
+/* ── Tabletas y celulares ───────────────────────────────────── */
+
+@media (max-width: 600px) {
+  #cb-popup {
+    left: 8px;
+    right: 8px;
+
+    bottom: 86px;
+
+    width: auto;
+
+    height: calc(100vh - 102px);
+    height: calc(100dvh - 102px);
+
+    max-height: none;
+
+    border-radius: 14px;
+  }
+
+  #cb-toggle {
+    right: 16px;
+    bottom: 16px;
+
+    width: 56px;
+    height: 56px;
+  }
+
+  .cb-header {
+    padding:
+      10px
+      12px;
+  }
+
+  .cb-avatar {
+    width: 37px;
+    height: 37px;
+
+    font-size: 20px;
+  }
+
+  .cb-messages {
+    padding: 10px;
+  }
+
+  .cb-msg {
+    max-width: 88%;
+
+    font-size: 13px;
+  }
+
+  /*
+   * La lista de pinturas ocupa como máximo la mitad del chat
+   * y puede desplazarse con el dedo.
+   */
+  .cb-options {
+    max-height: 50%;
+
+    padding:
+      7px
+      8px
+      8px;
+
+    gap: 4px;
+  }
+
+  .cb-opt-btn {
+    min-height: 44px;
+
+    padding:
+      6px
+      9px;
+
+    gap: 7px;
+  }
+
+  .cb-opt-icon {
+    width: 22px;
+
+    flex-basis: 22px;
+
+    font-size: 15px;
+  }
+
+  .cb-opt-title {
+    font-size: 12.5px;
+  }
+
+  .cb-opt-sub {
+    font-size: 10px;
+  }
+
+  .cb-wa-btn {
+    padding:
+      9px
+      12px;
+
+    font-size: 13px;
+  }
+}
+
+
+/* ── Pantallas muy pequeñas ─────────────────────────────────── */
+
+@media (max-width: 380px) {
+  #cb-popup {
+    left: 5px;
+    right: 5px;
+
+    bottom: 82px;
+
+    height: calc(100vh - 92px);
+    height: calc(100dvh - 92px);
+  }
+
+  .cb-options {
+    max-height: 52%;
+  }
+
+  .cb-opt-btn {
+    min-height: 42px;
+
+    padding:
+      5px
+      8px;
+  }
+
+  .cb-opt-title {
+    font-size: 12px;
+  }
+
+  .cb-opt-sub {
+    font-size: 9.5px;
+  }
 }
